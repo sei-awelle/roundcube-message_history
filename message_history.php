@@ -78,7 +78,7 @@ class message_history extends rcube_plugin
 		$identity = $user->get_identity();
 
 		$skin_path = $this->local_skin_path();
-		$this->include_stylesheet("$skin_path/table.css");
+		$this->include_stylesheet("$skin_path/message_history.css");
 	
 		//$table = new html_table(array('cols' => 4));
 		
