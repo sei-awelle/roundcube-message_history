@@ -1,18 +1,86 @@
-.table {
-  border: 1px solid #999999;
+table.message_history_table {
+	border-collapse: collapse;
+	border: 1px solid black;
+	margin: 25px 0;
+	font-size: 0.9em;
+	font-family: sans-serif;
+	box-shadow: 0 0 20px rgba(0, 0, 0, 0.15);
+	display: block;
 }
 
 .thead-default {
-  background: grey;
+	background-color: #009879;
 }
 
-.table_header {
-  color: red;
-  font-weight: bold;
+.menu a.logs:before{content: "\f1fe"}
+
+.message_history_table thead {
+	display: table;
+	width: 100%;
+	position: fixed;
+}
+
+.message_history_table tbody {
+	display:table;
+	width: 100%;
+	}
+
+.message_history_table th {
+	background-color: #38BDFF;
+	text-align: center;
+ 	font-weight: bold;
+	cursor: pointer;
+	border: 1px solid black;
+}
+
+.message_history_table td {
+	border: 1px solid black;
+	text-align: center;
+}
+
+
+.arrow {
+    display: inline-block;
+    width: 0;
+    height: 0;
+    margin-left: 5px;
+    vertical-align: middle;
+    border-top: 4px solid;
+    border-right: 4px solid transparent;
+    border-bottom: 0 solid transparent;
+    border-left: 4px solid transparent;
+  }
+
+.arrow-up {
+  border-top-color: #333;
+}
+
+.arrow-down {
+  border-bottom-color: #333;
+  transform: rotate(180deg);
+}
+
+html.dark-mode .table_header {
+	color: black;
 }
 
 .cell {
-  background: blue;
-  color: white;
+  background: transparent;
+  color: black;
+  text-align: center;
 }
 
+.h2 {
+	font-weight: bold;
+}
+
+.plugin-title {
+	display: inline-block !important;
+	text-align: left !important;
+	font-size: 2em;
+	font-family: sans-serif;
+}
+
+html.dark-mode .cell {
+	color: #c5d1d3;
+}
