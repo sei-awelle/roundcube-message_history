@@ -10,31 +10,18 @@ document.addEventListener('DOMContentLoaded', function() {
     headers[i].setAttribute('onclick', 'sortTable(' + i + ')');
   }
 
-  // Create a new div for the search bar
-  const searchBar = document.createElement('div');
-  searchBar.style.marginBottom = '10px';
-
-  // Create an input element for the search box
-  const searchBox = document.createElement('input');
-  searchBox.type = 'text';
-  searchBox.placeholder = 'Search';
-  searchBox.style.marginRight = '10px';
-
-  // Add an event listener to the search box to filter the table
+const searchBox = document.querySelector('#table_search');
+  const rows = document.querySelectorAll('.message_history_table tbody tr');
   searchBox.addEventListener('input', function() {
     const query = searchBox.value.toLowerCase();
-    const rows = table.querySelectorAll('tbody tr');
-  
     rows.forEach(row => {
       const cells = row.querySelectorAll('td');
       let shouldHide = true;
-  
       cells.forEach(cell => {
         if (cell.textContent.toLowerCase().indexOf(query) > -1) {
           shouldHide = false;
         }
       });
-  
       if (shouldHide) {
         row.style.display = 'none';
       } else {
@@ -42,14 +29,7 @@ document.addEventListener('DOMContentLoaded', function() {
       }
     });
   });
-
-  // Add the search box to the search bar div
-  searchBar.appendChild(searchBox);
-
-  // Add the search bar div to the table container
-  table.parentNode.insertBefore(searchBar, table);
-
- $('#message_history_v2').css('overflow-y', 'scroll');
+	$('#message_history_v2').css('overflow-y', 'scroll');
 });
 
 function sortTable(n) {
@@ -110,3 +90,4 @@ function sortTable(n) {
   arrow.classList.toggle('arrow-up');
   arrow.classList.toggle('arrow-down');
 }
+

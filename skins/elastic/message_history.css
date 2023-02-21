@@ -1,29 +1,33 @@
 table.message_history_table {
 	border-collapse: collapse;
 	border: 1px solid black;
-	margin: 25px 0;
 	font-size: 0.9em;
 	font-family: sans-serif;
 	box-shadow: 0 0 20px rgba(0, 0, 0, 0.15);
-	display: block;
 }
 
 .thead-default {
 	background-color: #009879;
+	color: black;
 }
 
 .menu a.logs:before{content: "\f1fe"}
 
 .message_history_table thead {
-	display: table;
-	width: 100%;
-	position: fixed;
+	position: sticky;
+	top: 0;
+	z-index: 1;
 }
 
-.message_history_table tbody {
-	display:table;
-	width: 100%;
-	}
+.table-wrapper {
+	overflow-y: auto;
+	display: block;
+}
+
+.search {
+     height: 30px;
+     width: 200px !important;
+}
 
 .message_history_table th {
 	background-color: #38BDFF;
@@ -31,11 +35,14 @@ table.message_history_table {
  	font-weight: bold;
 	cursor: pointer;
 	border: 1px solid black;
+	padding: 10px;
 }
 
 .message_history_table td {
 	border: 1px solid black;
 	text-align: center;
+	padding: 10px;
+	word-wrap: break-word;
 }
 
 
@@ -60,16 +67,6 @@ table.message_history_table {
   transform: rotate(180deg);
 }
 
-html.dark-mode .table_header {
-	color: black;
-}
-
-.cell {
-  background: transparent;
-  color: black;
-  text-align: center;
-}
-
 .h2 {
 	font-weight: bold;
 }
@@ -81,6 +78,19 @@ html.dark-mode .table_header {
 	font-family: sans-serif;
 }
 
-html.dark-mode .cell {
-	color: #c5d1d3;
+.sender, .recipient {
+	width: 20%;
+	word-wrap: break-word;
+}
+
+.subject {
+	width: 40%;
+}
+
+.timestamp {
+	width: 20%;
+}
+
+.layout-content {
+	background-color: #f4f4f4;
 }
