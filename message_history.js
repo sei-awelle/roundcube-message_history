@@ -90,4 +90,3 @@ function sortTable(n) {
   arrow.classList.toggle('arrow-up');
   arrow.classList.toggle('arrow-down');
 }
-
