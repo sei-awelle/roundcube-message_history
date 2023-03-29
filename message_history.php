@@ -60,7 +60,7 @@ class message_history extends rcube_plugin
 		$skin_path = $this->local_skin_path();
 		$db = rcmail::get_instance()->get_dbh();
 
-		$result = $db->query("SELECT from_user_name, to_user_name, subject, time_sent, read_status FROM message_history_v2 ORDER BY time_sent DESC");
+		$result = $db->query("SELECT from_user_name, to_user_name, subject, time_sent, read_status, roundcube_message_id FROM message_history_v2 ORDER BY time_sent DESC");
 		$records = $result->fetchAll();
 				
 		$table = new html_table(['id' => 'message_history_v2', 'class' => 'message_history_table']);
@@ -69,6 +69,7 @@ class message_history extends rcube_plugin
 		$table->add_header('sender','From');
 		$table->add_header('recipient','To');
 		$table->add_header('status', 'Read Status');
+		$table->add_header('message_id', 'Message ID');
 		
 		foreach ($records as $record) {
 			$to_users = explode(',', $record['to_user_name']);
@@ -80,6 +81,7 @@ class message_history extends rcube_plugin
 			$table->add(['class' => 'recipient', 'rowspan' => $rowspan], htmlspecialchars($record['to_user_name']));
 			$read_status = $record['read_status'] == 't' ? 'Read' : 'Unread';
 			$table->add(['class' => 'status', 'rowspan' => $rowspan], $read_status);
+			$table->add(['class' => 'message_id', 'rowspan' => $rowspan], $record['roundcube_message_id']);
 			$table->add_row();
 		}
 
@@ -101,7 +103,8 @@ class message_history extends rcube_plugin
 		$from_orig = $headers['From'];
 		$to_orig = $headers['To'];
 		$time_sent = $headers['Date'];
-
+		preg_match('/<(.+?)@.+>/', $headers['Message-ID'], $matches_id);
+		$message_id = $matches_id[1];
 		// get just the to emails
 		preg_match_all('/<(.+?)>/', $to_orig, $matches);
 		//$to_emails = implode(',', $matches);
@@ -143,8 +146,8 @@ class message_history extends rcube_plugin
 		}
 		
 		foreach ($to_names as $to_name) {
-        		$result = $db->query("INSERT INTO $table (from_user_name, to_user_name, subject, time_sent, modified, read_status) VALUES (?, ?, ?, ?, ?, ?)",
-            			$from_name, $to_name, $subject, $time_sent, $db->now(), 'FALSE');
+        		$result = $db->query("INSERT INTO $table (from_user_name, to_user_name, subject, time_sent, modified, read_status, roundcube_message_id) VALUES (?, ?, ?, ?, ?, ?, ?)",
+            			$from_name, $to_name, $subject, $time_sent, $db->now(), 'FALSE', $message_id);
 		}
 		if ($db->is_error($result))
 		{
@@ -162,7 +165,8 @@ class message_history extends rcube_plugin
     $this->load_config();
     $db = rcmail::get_instance()->get_dbh();
     $message = $args['message'];
-
+    preg_match('/<(.+?)@.+>/', $message->get_header('Message-ID'), $matches);
+    $message_id = $matches[1];
     //Get user who is actually reading the email
     $rcmail = rcmail::get_instance();
     $user = $rcmail->user->get_username();
@@ -193,16 +197,18 @@ class message_history extends rcube_plugin
 
     foreach ($to_array as $to) {
 	    $to = trim($to);
-	    $check_record_exists = $db->query("SELECT * FROM $table WHERE from_user_name = '$from_name' AND to_user_name = '$to' AND subject = '$parsed_subject' AND time_sent = '$timestamp'");
+	    //$check_record_exists = $db->query("SELECT * FROM $table WHERE from_user_name = '$from_name' AND to_user_name = '$to' AND subject = '$parsed_subject' AND time_sent = '$timestamp'");
+	    $check_record_exists = $db->query("SELECT * FROM $table WHERE roundcube_message_id = '$message_id' AND to_user_name = '$to'");
 	    if ($check_record_exists->rowCount() === 0){
-	    	$test = $db->query("INSERT INTO $table (from_user_name, to_user_name, subject, time_sent, modified, read_status) VALUES (?, ?, ?, ?, ?, ?)", 
-			$from, $to, $parsed_subject, $timestamp, $db->now(), ($to === $user ? 'TRUE' : 'FALSE'));	
+	    	$test = $db->query("INSERT INTO $table (from_user_name, to_user_name, subject, time_sent, modified, read_status, roundcube_message_id) VALUES (?, ?, ?, ?, ?, ?, ?)", 
+			$from, $to, $parsed_subject, $timestamp, $db->now(), ($to === $user ? 'TRUE' : 'FALSE'), $message_id);
 	    }
 
 	    if ($to === $logged_user) { // check if the current recipient matches the logged in user
 	    // update is_read column to 1 for this message
-	    	$result = $db->query("UPDATE $table SET read_status = TRUE WHERE subject = '$parsed_subject' AND time_sent = '$timestamp' AND from_user_name = '$from_name' AND to_user_name = '$to'");
-		if ($db->is_error($result)) {
+	    	//$result = $db->query("UPDATE $table SET read_status = TRUE WHERE subject = '$parsed_subject' AND time_sent = '$timestamp' AND from_user_name = '$from_name' AND to_user_name = '$to'");
+		    $result = $db->query("UPDATE $table SET read_status = TRUE WHERE roundcube_message_id = '$message_id' AND to_user_name = '$to'");
+		    if ($db->is_error($result)) {
             		rcube::raise_error([
                 	'code' => 605, 'line' => __LINE__, 'file' => __FILE__,
                 	'message' => "message_history: failed to mark message as read."
