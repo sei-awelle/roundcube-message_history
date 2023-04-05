@@ -1,7 +1,7 @@
 document.addEventListener('DOMContentLoaded', function() {
   const headerTitle = document.querySelector('.header-title');
-  headerTitle.innerHTML = 'Roundcube Logs';
-	headerTitle.classList.add('plugin-title');
+  headerTitle.innerHTML = 'Roundcube Message History';
+  headerTitle.classList.add('plugin-title');
   const table = document.getElementById('message_history_v2');
   const headers = table.getElementsByTagName('th');
   
@@ -10,7 +10,7 @@ document.addEventListener('DOMContentLoaded', function() {
     headers[i].setAttribute('onclick', 'sortTable(' + i + ')');
   }
 
-const searchBox = document.querySelector('#table_search');
+  const searchBox = document.querySelector('#table_search');
   const rows = document.querySelectorAll('.message_history_table tbody tr');
   searchBox.addEventListener('input', function() {
     const query = searchBox.value.toLowerCase();
@@ -29,7 +29,16 @@ const searchBox = document.querySelector('#table_search');
       }
     });
   });
-	$('#message_history_v2').css('overflow-y', 'scroll');
+
+  // Check for search keyword in URL
+  const urlParams = new URLSearchParams(window.location.search);
+  const searchKeyword = urlParams.get('search');
+  if (searchKeyword) {
+    searchBox.value = searchKeyword;
+    searchBox.dispatchEvent(new Event('input'));
+  }
+
+  $('#message_history_v2').css('overflow-y', 'scroll');
 });
 
 function sortTable(n) {
