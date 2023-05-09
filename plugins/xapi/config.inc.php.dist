@@ -1,0 +1,23 @@
+<?php
+
+/**
+ * xAPI configuration file
+ */
+
+// In order to enable xAPI configure an array
+
+$config['xapi'] = [
+
+    // URL for LRS
+    'lrs_endpoint' => 'http://example.com/xapi',
+    // LRS username, credential ID, or API key
+    'lrs_username' => 'admin',
+    // LRS password or API secret for given username
+    'lrs_password' => 'password',
+    // Identify users by email
+    'actor_email' => 'true',
+    // Identify users by username
+    'actor_username' => 'false',
+
+
+];
