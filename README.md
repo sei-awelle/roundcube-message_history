@@ -48,13 +48,13 @@ To facilitate the creation of xAPI statements, the plugin provides the following
 
 In your ```roundcube/plugins``` fodler run this command:
 
-``` git clone <add url>```
+``` git clone https://github.com/sei-awelle/roundcube-message_history.git```
 
 alternatively, if you don't have ```git``` installed, you can just get the zip instead:
 
 ``` 
-wget wget -O <add zip> <url>
-unzip <add zip>
+wget wget -O roundcube-message_history-main.zip https://github.com/sei-awelle/roundcube-message_history.git
+unzip roundcube-message_history-main.zip
 ```
 
 **2. Update Roundcube Config**
