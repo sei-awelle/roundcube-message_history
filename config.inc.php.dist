@@ -16,3 +16,4 @@ $config['message_history']['global'] = [
     // message history users are defined by the address book group with this name
     'group' => 'Observers',
 ];
+

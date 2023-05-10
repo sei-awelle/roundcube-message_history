@@ -7,9 +7,4 @@ CREATE TABLE IF NOT EXISTS "message_history" (
 	"modified" timestamptz NOT NULL
 );
 
-CREATE TABLE IF NOT EXISTS "message_history_users" (
-	"id" SERIAL PRIMARY KEY,
-        "user_id" int NOT NULL,
-	"modified" timestamptz NOT NULL
-);
 
