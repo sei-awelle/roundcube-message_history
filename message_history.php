@@ -13,6 +13,8 @@ use Xabbuh\XApi\Model\LanguageMap;
 use Xabbuh\XApi\Model\Context;
 use Xabbuh\XApi\Model\Definition;
 use Xabbuh\XApi\Model\IRL;
+use Xabbuh\XApi\Model\Account;
+use Xabbuh\XApi\Model\Group;
 
 class message_history extends rcube_plugin
 {
@@ -20,8 +22,11 @@ class message_history extends rcube_plugin
 	private $rcube;
 	private $xApiClient;
 	private $context;
-	//private $message_id;
 	private $exercise;
+	private $actor;
+	private $team;
+	private $user_email;
+	private $user_name;
 
 	// Initialization function
 	// Define hooks to be used and add history button for permitted users
@@ -33,34 +38,37 @@ class message_history extends rcube_plugin
 		$this->load_config();
 		$this->rcube = rcube::get_instance();
 		$this->config = $this->rcube->config->get('message_history');
-	
-		// install user hooks
-		// Hook to Add Exercise Selection to Headers and to log sent
-		// message to the roundcybe message history table
-		$this->add_hook('message_ready', array($this, 'log_sent_message'));
-		// Hook to add sent message when email is sent through
-		// stackstorm and to mark any email as read when a user reads it
-		$this->add_hook('message_read', array($this, 'log_read_message'));	
-		//Hook to log xapi when a message is sent
-		$this->add_hook('message_sent', [$this, 'xapilog_sent_message']);
-		//Hook to log xapi when a user logings
-		$this->add_hook('login_after', [$this, 'log_login']);
-		//Hook to log xapi when a user refreshes
-		$this->add_hook('refresh', [$this, 'log_refresh']);
-		$this->add_hook('message_load', array($this, 'message_load_handler'));
 
-		$groupname = $this->config['group'];
+		rcube::console("message_history: init");
+
+		// Hook to log xapi when a user logings
+		$this->add_hook('login_after', [$this, 'log_login']);
+
 
 		// Get the current user info and permissions
-		$user = $rcmail->user->get_username();
+		$this->user_email = $rcmail->user->get_username();
 		$db = rcmail::get_instance()->get_dbh();
-		$result = $db->query("SELECT email FROM contacts INNER JOIN contactgroupmembers ON contacts.contact_id = contactgroupmembers.contact_id INNER JOIN contactgroups ON contactgroups.contactgroup_id = contactgroupmembers.contactgroup_id AND contactgroups.name = '$groupname' WHERE email = '$user'");
+
+		// convert from name to email address
+		$result = $db->query("SELECT name FROM contacts WHERE email = '" . $this->user_email . "'");
+		if ($db->is_error($result))
+		{
+			rcube::raise_error([
+			'code' => 605, 'line' => __LINE__, 'file' => __FILE__,
+			'message' => "message_history: failed to pull name from database."
+			], true, false);
+		}
+		// TODO verify one entry
+		$records = $db->fetch_assoc($result);
+		$this->user_name = $records['name'];
+
+		$result = $db->query("SELECT email FROM contacts INNER JOIN contactgroupmembers ON contacts.contact_id = contactgroupmembers.contact_id INNER JOIN contactgroups ON contactgroups.contactgroup_id = contactgroupmembers.contactgroup_id AND contactgroups.name = '" . $this->config['group'] . "' WHERE email = '" . $this->user_email . "'");
 
 		// if compose page is rendered, the dropdown will be added to
 		// the compose page to select an exercise
-		//if ($rcmail->action == 'compose') {
+		if ($rcmail->action == 'compose') {
 			$this->add_hook('render_page', array($this, 'add_dropdown_to_compose'));
-		//}
+		}
 
 		// if user has the required permissions, the user will be able
 		// to view the message history table
@@ -82,6 +90,40 @@ class message_history extends rcube_plugin
 			],
 			'taskbar');
 		}
+
+		// get groups from global address book
+		$groups = $db->query("SELECT contactgroups.name FROM contactgroups INNER JOIN contactgroupmembers ON contactgroups.contactgroup_id = contactgroupmembers.contactgroup_id INNER JOIN contacts ON contacts.contact_id = contactgroupmembers.contact_id WHERE contacts.email = '" . $this->user_email . "'");
+		$records = $groups->fetchAll();
+		// get primary team from config
+		foreach ($records as $record) {
+			if (in_array($record['name'], $this->config['teams'])) {
+				$this->team = $record['name'];
+				break;
+			}
+		}
+
+		if ($rcmail->task == 'addressbook' || $rcmail->task == 'settings' || $rcmail->task == 'message_history') {
+			rcube::console("message_history: not setting hooks for " . $rcmail->task);
+			return;
+		}
+		rcube::console("message_history: setting hooks");
+
+		// install user hooks
+		// Hook to Add Exercise Selection to Headers and to log sent
+		// message to the roundcube message history table
+		$this->add_hook('message_ready', array($this, 'log_sent_message'));
+
+		// Hook to add sent message when email is sent through
+		// stackstorm and to mark any email as read when a user reads it
+		$this->add_hook('message_read', array($this, 'log_read_message'));
+
+		// Hook to log xapi when a message is sent
+		$this->add_hook('message_sent', [$this, 'xapilog_sent_message']);
+
+		// Hooks to log xapi when a user refreshes
+		$this->add_hook('refresh', [$this, 'log_refresh']);
+		$this->add_hook('message_load', array($this, 'message_load_handler'));
+
 	}
 
 	// Function to register plugin handler and to set the page title for the
@@ -93,7 +135,7 @@ class message_history extends rcube_plugin
 		$this->rc->output->send('plugin');
 
 	}
-	
+
 	// Function to create a new roundcube section and to create a html table
 	// for message history
 	public function logs_form()
@@ -155,11 +197,14 @@ class message_history extends rcube_plugin
 		$rcmail = rcmail::get_instance();
 		$raw_headers = $rcmail->storage->get_raw_headers($message->uid);
 		$headers = rcube_mime::parse_headers($raw_headers);
-		$this->exercise = $headers['exercise'];	
+		// TODO handle if exercise does not exist
+		$this->exercise = $headers['exercise'];
 	}
 
 	public function add_dropdown_to_compose($args)
 	{
+		rcube::console("message_history: add_dropdown_to_compose");
+
 		// Information to make an api call to obtain the views the
 		// current user is part of
 		$url = 'https://player.cwdoe.cmusei.dev/api/me/views';
@@ -226,7 +271,7 @@ class message_history extends rcube_plugin
 			$args['content'] = $doc->saveHTML();
 		}
 
-		
+
 		if ($args['template'] == 'message')
 		{
 			$exercise = $this->exercise;
@@ -243,13 +288,13 @@ class message_history extends rcube_plugin
 				$label->setAttribute('id', 'exercise-selection');
 				$labelText = $doc->createTextNode("Exercise: $exercise");
 				$label->appendChild($labelText);
-			
+
 				$targetDiv->appendChild($label);
 				$args['content'] = $doc->saveHTML();
-			
+
 			}
 		}
-	 
+
 		return $args;
 	}
 
@@ -282,13 +327,13 @@ class message_history extends rcube_plugin
 		$to_names = preg_replace('/ , /', ',', $to_names);
 		$to_names = trim($to_names);
 
-		
+
 		// convert from name to email address
 		$result = $db->query("SELECT name FROM contacts WHERE email = '$from_orig'");
 		if ($db->is_error($result))
 		{
 			rcube::raise_error([
-				'code' => 605, 'line' => __LINE__, 'file' => __FILE__, 
+				'code' => 605, 'line' => __LINE__, 'file' => __FILE__,
 				'message' => "message_history: failed to pull name from database."
 			], true, false);
 		}
@@ -296,7 +341,7 @@ class message_history extends rcube_plugin
 		$from_name = $records['name'];
 
 		$table = 'message_history_v2';
-		
+
 		// convert to email addresses to names
 		$to_names = array();
 		foreach ($to_emails as $to_email) {
@@ -315,8 +360,9 @@ class message_history extends rcube_plugin
 		// Insert the new message record into the database
 		// message_history_v2 table
 		foreach ($to_names as $to_name) {
-			$result = $db->query("INSERT INTO $table (from_user_name, to_user_name, subject, time_sent, modified, read_status, roundcube_message_id, exercise) VALUES (?, ?, ?, ?, ?, ?, ?, ?)",
-					$from_name, $to_name, $subject, $time_sent, $db->now(), 'FALSE', $message_id, $exercise);
+			$result = $db->query("INSERT INTO $table (from_user_name, to_user_name,
+				subject, time_sent, modified, read_status, roundcube_message_id, exercise) VALUES (?, ?, ?, ?, ?, ?, ?, ?)",
+				$from_name, $to_name, $subject, $time_sent, $db->now(), 'FALSE', $message_id, $exercise);
 		}
 
 		// if the message couldn't be inserted into the database table,
@@ -324,11 +370,11 @@ class message_history extends rcube_plugin
 		if ($db->is_error($result))
 		{
 			rcube::raise_error([
-				'code' => 605, 'line' => __LINE__, 'file' => __FILE__, 
+				'code' => 605, 'line' => __LINE__, 'file' => __FILE__,
 				'message' => "message_history_v2: failed to insert record into database."
 			], true, false);
 		}
-		
+
 		return $args;
 	}
 
@@ -337,19 +383,12 @@ class message_history extends rcube_plugin
 	public function log_read_message($args)
 	{
 		$db = rcmail::get_instance()->get_dbh();
-		
+		$rcmail = rcmail::get_instance();
+
 		// Get the required information from the message headers
 		$message = $args['message'];
 		preg_match('/<(.+?)@.+>/', $message->get_header('Message-ID'), $matches);
 		$message_id = $matches[1];
-		
-		// Get user who is actually reading the email
-		$rcmail = rcmail::get_instance();
-		$user = $rcmail->user->get_username();
-		$convert_user = $db->query("SELECT name FROM contacts WHERE email = '$user'");
-		$records = $db->fetch_assoc($convert_user);
-		$logged_user = $records['name'];
-
 
 		// Get To User Value
 		$to_orig = $message->get_header('to');
@@ -360,8 +399,18 @@ class message_history extends rcube_plugin
 
 		// Get From User Value
 		$from = $message->get_header('from');
-		$convert_from = $db->query("SELECT name FROM contacts WHERE email = '$from'");
-		$records = $db->fetch_assoc($convert_from);
+		$result = $db->query("SELECT name FROM contacts WHERE email = '$from'");
+		if ($db->is_error($result)) {
+			rcube::raise_error([
+				'code' => 605, 'line' => __LINE__, 'file' => __FILE__,
+				'message' => "message_history: failed to pull name from database."
+			], true, false);
+		}
+		$records = $db->fetch_assoc($result);
+		// TODO verify one
+		if (count($records) != 1) {
+			rcube::console("message_history: cannot find single record for " . $from);
+		}
 		$from_name = $records['name'];
 
 		// Get Execise name from header
@@ -372,14 +421,14 @@ class message_history extends rcube_plugin
 		// Get Subject Value
 		$subject = $message->get_header('subject');
 		$parsed_subject = substr($subject, strpos($subject, "]") + 2);
-		
+
 		// Get Date Value
 		$date_str = $message->get_header('Date');
 		$timestamp = date('Y-m-d H:i:s', strtotime($date_str)) . '+00';
 		$table = 'message_history_v2';
-	
+
 		// add the new message record when the user reads the message,
-		// if it was sent through stackstorm	
+		// if it was sent through stackstorm
 		foreach ($to_array as $to) {
 			$to = trim($to);
 			// first check if the email record exists (if it was
@@ -387,14 +436,15 @@ class message_history extends rcube_plugin
 			$check_record_exists = $db->query("SELECT * FROM $table WHERE roundcube_message_id = '$message_id' AND to_user_name = '$to'");
 			// if the record doesn't exist, insert the new record
 			// into the database table
-			if ($check_record_exists->rowCount() === 0){
-				$new_record = $db->query("INSERT INTO $table (from_user_name, to_user_name, subject, time_sent, modified, read_status, roundcube_message_id, exercise) VALUES (?, ?, ?, ?, ?, ?, ?, ?)", 
-				$from, $to, $parsed_subject, $timestamp, $db->now(), ($to === $user ? 'TRUE' : 'FALSE'), $message_id, $exercise);	
+			if ($check_record_exists->rowCount() === 0) {
+				$new_record = $db->query("INSERT INTO $table (from_user_name, to_user_name,
+					subject, time_sent, modified, read_status, roundcube_message_id, exercise) VALUES (?, ?, ?, ?, ?, ?, ?, ?)",
+					$from, $to, $parsed_subject, $timestamp, $db->now(), ($to === $this->user_email ? 'TRUE' : 'FALSE'), $message_id, $exercise);
 			}
-			
+
 			// make sure only the record is marked as read for the
 			// user who is actually reading the message
-			if ($to === $logged_user) { // check if the current recipient matches the logged in user
+			if ($to === $this->user_email) { // check if the current recipient matches the logged in user
 				// update is_read column to 1 for this message
 				$result = $db->query("UPDATE $table SET read_status = TRUE WHERE roundcube_message_id = '$message_id' AND to_user_name = '$to'");
 				if ($db->is_error($result)) {
@@ -404,9 +454,9 @@ class message_history extends rcube_plugin
 		   			], true, false);
 				}
 			}
-	
+
 		}
-		
+
 		// build xapi client
 		$this->build_client();
 		$statementsApiClient = $this->xApiClient->getStatementsApiClient();
@@ -414,7 +464,7 @@ class message_history extends rcube_plugin
 		$sf = new StatementFactory();
 
 		// set actor
-		$sf->withActor(new Agent(InverseFunctionalIdentifier::withMbox(IRI::fromString("mailto:$user")), $logged_user));
+		$this->set_actor($sf);
 
 		// set verb
 		$languageMap = new LanguageMap();
@@ -446,7 +496,7 @@ class message_history extends rcube_plugin
 
 		return $args;
 	}
-	
+
 	// Function to build xapi client
 	private function build_client()
 	{
@@ -463,17 +513,27 @@ class message_history extends rcube_plugin
 		$context = new Context();
 		$platformContext = $context->withPlatform($_SERVER['SERVER_NAME']);
 		$languageContext = $platformContext->withLanguage('en-US');
-		// TODO lookup group but determine primary group by ??
-		//$group = new Group();
-		//$context->withTeam($group);
-		$this->context = $languageContext;
+		// TODO determine group email domain from config
+		$team_email = $this->team . "@this.ws";
+		$members = array();
+		array_push($members, $this->actor);
+		$group = new Group(InverseFunctionalIdentifier::withMbox(IRI::fromString("mailto:$team_email")), $this->team, $members);
+		$groupContext = $languageContext->withTeam($group);
+		$this->context = $groupContext;
 	}
 
 	//Function to set xapi actor
-	private function set_actor($user, $x_user, $sf)
+	private function set_actor($sf)
 	{
-		$agent = new Agent(InverseFunctionalIdentifier::withMbox(IRI::fromString("mailto:$user")), $x_user);
+		$agent = new Agent(InverseFunctionalIdentifier::withMbox(IRI::fromString("mailto:" . $this->user_email)), $this->user_name);
 		// TODO build account
+
+		$name = "Test";
+		$token = $_SESSION['oauth_token'];
+		//$access_token = $_SESSION['access_token'];
+		//$account = new Account($name, IRL::fromString('https://' . $_SERVER['SERVER_NAME'] . "?_task=message_history&_action=plugin.message_history&search=$x_search"));
+		// TODO get account info
+		$this->actor = $agent;
 		$sf->withActor($agent);
 		return $sf;
 	}
@@ -519,10 +579,6 @@ class message_history extends rcube_plugin
 	{
 		$db = rcmail::get_instance()->get_dbh();
 
-		//Get user who is actually sending the email
-		$rcmail = rcmail::get_instance();
-		$user = $rcmail->user->get_username();
-
 		$headers = $args['message']->headers();
 		$subject = $headers['Subject'];
 		$from_orig = $headers['From'];
@@ -540,18 +596,6 @@ class message_history extends rcube_plugin
 		$to_names = preg_replace('/<(.+?)>/', '', $to_orig);
 		$to_names = preg_replace('/ , /', ',', $to_names);
 		$to_names = trim($to_names);
-
-		// convert from name to email address
-		$result = $db->query("SELECT name FROM contacts WHERE email = '$from_orig'");
-		if ($db->is_error($result))
-		{
-			rcube::raise_error([
-			'code' => 605, 'line' => __LINE__, 'file' => __FILE__,
-			'message' => "xapi: failed to pull name from database."
-			], true, false);
-		}
-		$records = $db->fetch_assoc($result);
-		$from_name = $records['name'];
 
 		// convert to email addresses to names
 		$to_names = array();
@@ -576,7 +620,7 @@ class message_history extends rcube_plugin
 		$sf = new StatementFactory();
 
 		// set actor
-		$sf->withActor(new Agent(InverseFunctionalIdentifier::withMbox(IRI::fromString("mailto:$user")), $from_name));
+		$this->set_actor($sf);
 
 		// set verb
 		$languageMap = new LanguageMap();
@@ -600,7 +644,7 @@ class message_history extends rcube_plugin
 		$sf->withContext($this->context);
 
 		$statement = $sf->createStatement();
-	
+
 		// Send statement
 		$this->send_statement($statement, $statementsApiClient);
 
@@ -612,16 +656,6 @@ class message_history extends rcube_plugin
 	//Function to log xapi when a user refreshes
 	public function log_refresh($args)
 	{
-		// Get user who refreshed
-		$db = rcmail::get_instance()->get_dbh();
-
-		//get user who refresjed
-		$rcmail = rcmail::get_instance();
-		$user = $rcmail->user->get_username();
-		$convert_user = $db->query("SELECT name FROM contacts WHERE email = '$user'");
-		$records = $db->fetch_assoc($convert_user);
-		$refresh_user = $records['name'];
-
 		// Build xapi client
 		$this->build_client();
 		$statementsApiClient = $this->xApiClient->getStatementsApiClient();
@@ -631,7 +665,7 @@ class message_history extends rcube_plugin
 
 		// Set actor
 		//$sf->withActor(new Agent(InverseFunctionalIdentifier::withMbox(IRI::fromString("mailto:$user")), $refresh_user));
-		$sf = $this->set_actor($user, $refresh_user, $sf);
+		$sf = $this->set_actor($sf);
 
 		// Set verb
 		$languageMap = new LanguageMap();
@@ -655,8 +689,8 @@ class message_history extends rcube_plugin
 		$sf->withContext($this->context);
 
 		$action = 'A user refreshed during the exercise event';
-		$statement = $this->set_object($languageMap, $action, $user, $sf);
-	
+		$statement = $this->set_object($languageMap, $action, $this->user_email, $sf);
+
 		// Send statement
 		$this->send_statement($statement, $statementsApiClient);
 
@@ -666,15 +700,6 @@ class message_history extends rcube_plugin
 	//Function to log xapi when a user logins
 	public function log_login($args)
 	{
-		// Get user who logged in
-		$db = rcmail::get_instance()->get_dbh();
-
-		//get user who logged in
-		$rcmail = rcmail::get_instance();
-		$user = $rcmail->user->get_username();
-		$convert_user = $db->query("SELECT name FROM contacts WHERE email = '$user'");
-		$records = $db->fetch_assoc($convert_user);
-		$logged_user = $records['name'];
 
 		// Build xapi client
 		$this->build_client();
@@ -684,28 +709,27 @@ class message_history extends rcube_plugin
 		$sf = new StatementFactory();
 
 		// Set actor
-		//$sf->withActor(new Agent(InverseFunctionalIdentifier::withMbox(IRI::fromString("mailto:$user")), $logged_user));
-		$sf = $this->set_actor($user, $logged_user, $sf);
-	
+		$sf = $this->set_actor($sf);
+
 		// Set verb
 		$languageMap = new LanguageMap();
 		//$mapLogin = $languageMap->withEntry("en-US", "login");
 		//$sf->withVerb(new Verb(IRI::fromString('https://w3id.org/xapi/dod-isd/verbs/login'), $mapLogin));
 		$verb = 'login';
 		$sf = $this->set_verb($languageMap, $verb, $sf);
-	
+
 		// Set object
 		//$mapName = $languageMap->withEntry('en-US', 'Use');
 		//$mapDesc = $languageMap->withEntry('en-US', 'A user logged in during the exercise event');
 		//$type = IRI::fromString('http://id.tincanapi.com/activitytype/login');
 		//$moreInfo = IRL::fromString('https://' . $_SERVER['SERVER_NAME'] . "?_task=message_history&_action=plugin.message_history&search=$user");
 		//$definition = new Definition($mapName, $mapDesc, $type, $moreInfo);
-		//$id = IRI::fromString('https://' . $_SERVER['SERVER_NAME']);	
+		//$id = IRI::fromString('https://' . $_SERVER['SERVER_NAME']);
 		//$activity = new Activity($id, $definition);
 		//$sf->withObject($activity);
 		$action = 'A user logged in during the exercise event';
-		$statement = $this->set_object($languageMap, $action, $user, $sf);
-	
+		$statement = $this->set_object($languageMap, $action, $this->user_email, $sf);
+
 		// Set context
 		$this->build_context();
 		$sf->withContext($this->context);
@@ -714,6 +738,16 @@ class message_history extends rcube_plugin
 		$this->send_statement($statement, $statementsApiClient);
 
 		return $args;
+	}
+
+	private function xapi_error(Exception $e)
+	{
+		$m = $e->getMessage();
+		rcube::raise_error([
+			'line' => __LINE__,
+			'file' => __FILE__,
+			'message' => "xapi: $m"
+		], true, false);
 	}
 
 }
