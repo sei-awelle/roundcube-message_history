@@ -14,6 +14,8 @@
 $config['message_history'] = [
 	// history users are defined by the address book group with this name
 	'group' => 'Observers',
+	// list of valid primary user teams
+	'teams' => [],
 	// URL for LRS
 	'lrs_endpoint' => 'http://example.com/xapi/statements',
 	// LRS username, credential ID, or API key

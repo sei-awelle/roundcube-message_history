@@ -27,6 +27,7 @@ class message_history extends rcube_plugin
 	private $team;
 	private $user_email;
 	private $user_name;
+	private $domain;
 
 	// Initialization function
 	// Define hooks to be used and add history button for permitted users
@@ -38,6 +39,7 @@ class message_history extends rcube_plugin
 		$this->load_config();
 		$this->rcube = rcube::get_instance();
 		$this->config = $this->rcube->config->get('message_history');
+		$this->domain = $this->rcube->config->get('username_domain');
 
 		rcube::console("message_history: init");
 
@@ -514,7 +516,7 @@ class message_history extends rcube_plugin
 		$platformContext = $context->withPlatform($_SERVER['SERVER_NAME']);
 		$languageContext = $platformContext->withLanguage('en-US');
 		// TODO determine group email domain from config
-		$team_email = $this->team . "@this.ws";
+		$team_email = $this->team . "@" . $this->domain;
 		$members = array();
 		array_push($members, $this->actor);
 		$group = new Group(InverseFunctionalIdentifier::withMbox(IRI::fromString("mailto:$team_email")), $this->team, $members);
@@ -585,7 +587,6 @@ class message_history extends rcube_plugin
 		$to_orig = $headers['To'];
 		preg_match('/<(.+?)@.+>/', $headers['Message-ID'], $matches);
 		$message_id = $matches[1];
-		//rcube::console("xapi: $message_id");
 
 		// get just the to emails
 		preg_match_all('/<(.+?)>/', $to_orig, $matches);
@@ -627,7 +628,6 @@ class message_history extends rcube_plugin
 		$mapSent = $languageMap->withEntry("en-US", "sent");
 		$sf->withVerb(new Verb(IRI::fromString('https://w3id.org/xapi/dod-isd/verbs/sent'), $mapSent));
 
-
 		// set object
 		$mapName = $languageMap->withEntry('en-US', 'Email');
 		$mapDesc = $languageMap->withEntry('en-US', 'An email message sent or read during the exercise event');
@@ -664,13 +664,10 @@ class message_history extends rcube_plugin
 		$sf = new StatementFactory();
 
 		// Set actor
-		//$sf->withActor(new Agent(InverseFunctionalIdentifier::withMbox(IRI::fromString("mailto:$user")), $refresh_user));
 		$sf = $this->set_actor($sf);
 
 		// Set verb
 		$languageMap = new LanguageMap();
-		//$mapLogin = $languageMap->withEntry("en-US", "refresh");
-		//$sf->withVerb(new Verb(IRI::fromString('https://w3id.org/xapi/dod-isd/verbs/refresh'), $mapLogin));
 		$verb = 'refresh';
 		$sf = $this->set_verb($languageMap, $verb, $sf);
 
@@ -713,8 +710,6 @@ class message_history extends rcube_plugin
 
 		// Set verb
 		$languageMap = new LanguageMap();
-		//$mapLogin = $languageMap->withEntry("en-US", "login");
-		//$sf->withVerb(new Verb(IRI::fromString('https://w3id.org/xapi/dod-isd/verbs/login'), $mapLogin));
 		$verb = 'login';
 		$sf = $this->set_verb($languageMap, $verb, $sf);
 
