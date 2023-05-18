@@ -435,15 +435,14 @@ class message_history extends rcube_plugin
 		$sf->withObject($activity);
 
 		// with context
+		$this->build_context();
 		$sf->withContext($this->context);
 
 		// create and store statement
 		$statement = $sf->createStatement();
-		try {
-				$statementsApiClient->storeStatement($statement);
-		} catch (Exception $e) {
-				$this->xapi_error($e);
-		}
+
+		// Send statement
+		$this->send_statement($statement, $statementsApiClient);
 
 		return $args;
 	}
@@ -454,9 +453,9 @@ class message_history extends rcube_plugin
 		// build xapi client
 		$builder = new XApiClientBuilder();
 		$this->xApiClient = $builder->setBaseUrl($this->config['lrs_endpoint'])
-				->setVersion('1.0.0')
-				->setAuth($this->config['lrs_username'], $this->config['lrs_password'])
-				->build();
+			->setVersion('1.0.0')
+			->setAuth($this->config['lrs_username'], $this->config['lrs_password'])
+			->build();
 	}
 
 	// Function to build xapi context
@@ -464,6 +463,7 @@ class message_history extends rcube_plugin
 		$context = new Context();
 		$platformContext = $context->withPlatform($_SERVER['SERVER_NAME']);
 		$languageContext = $platformContext->withLanguage('en-US');
+		// TODO lookup group but determine primary group by ??
 		//$group = new Group();
 		//$context->withTeam($group);
 		$this->context = $languageContext;
@@ -473,21 +473,21 @@ class message_history extends rcube_plugin
 	private function set_actor($user, $x_user, $sf)
 	{
 		$agent = new Agent(InverseFunctionalIdentifier::withMbox(IRI::fromString("mailto:$user")), $x_user);
+		// TODO build account
 		$sf->withActor($agent);
 		return $sf;
 	}
 
-		// Function to set xapi verb
+	// Function to set xapi verb
 	private function set_verb($languageMap, $x_verb, $sf)
 	{
-		//$languageMap = new LanguageMap();
 		$mapRead = $languageMap->withEntry("en-US", $x_verb);
 		$verb = new Verb(IRI::fromString("https://w3id.org/xapi/dod-isd/verbs/$x_verb"), $mapRead);
 		$sf->withVerb($verb);
 		return $sf;
 	}
 
-		// Function to set xapi object
+	// Function to set xapi object
 	private function set_object($languageMap, $x_action, $x_search, $sf)
 	{
 		$mapName = $languageMap->withEntry('en-US', 'Use');
@@ -498,9 +498,6 @@ class message_history extends rcube_plugin
 		$id = IRI::fromString('https://' . $_SERVER['SERVER_NAME']);
 		$activity = new Activity($id, $definition);
 		$sf->withObject($activity);
-
-		// Set context
-		$sf->withContext($this->context);
 
 		$statement = $sf->createStatement();
 
@@ -599,16 +596,15 @@ class message_history extends rcube_plugin
 
 
 		// with context
+		$this->build_context();
 		$sf->withContext($this->context);
 
 		$statement = $sf->createStatement();
+	
+		// Send statement
+		$this->send_statement($statement, $statementsApiClient);
 
 		// store a single Statement
-		try {
-			$statementsApiClient->storeStatement($statement);
-		} catch (Exception $e) {
-			$this->xapi_error($e);
-		}
 		return $args;
 	}
 
@@ -655,19 +651,13 @@ class message_history extends rcube_plugin
 		//$sf->withObject($activity);
 
 		// Set context
-		//$sf->withContext($this->context);
+		$this->build_context();
+		$sf->withContext($this->context);
 
 		$action = 'A user refreshed during the exercise event';
 		$statement = $this->set_object($languageMap, $action, $user, $sf);
 	
 		// Send statement
-		// $statement = $sf->createStatement();
-		//try {
-		//$statementsApiClient->storeStatement($statement);
-		// } catch (Exception $e) {
-		//$this->xapi_error($e);
-		//}
-
 		$this->send_statement($statement, $statementsApiClient);
 
 		return $args;
@@ -717,23 +707,14 @@ class message_history extends rcube_plugin
 		$statement = $this->set_object($languageMap, $action, $user, $sf);
 	
 		// Set context
-		//$sf->withContext($this->context);
+		$this->build_context();
+		$sf->withContext($this->context);
 
 		// Send statement
-		//$statement = $sf->createStatement();
-	
-		//try {
-		//	$statementsApiClient->storeStatement($statement);
-		//} catch (Exception $e) {
-		//	$this->xapi_error($e);
-		//}
-	
 		$this->send_statement($statement, $statementsApiClient);
 
 		return $args;
 	}
-
-
 
 }
 ?>
