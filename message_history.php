@@ -60,17 +60,16 @@ class message_history extends rcube_plugin
 			'message' => "message_history: failed to pull name from database."
 			], true, false);
 		}
-		// TODO verify one entry
 		$records = $db->fetch_assoc($result);
-		$this->user_name = $records['name'];
+		// verify one entry
+		if (!$records || (count($records) != 1)) {
+			rcube::console("message_history: cannot find single record for " . $this->user_email);
+			return;
+		} else {
+			$this->user_name = $records['name'];
+		}
 
 		$result = $db->query("SELECT email FROM contacts INNER JOIN contactgroupmembers ON contacts.contact_id = contactgroupmembers.contact_id INNER JOIN contactgroups ON contactgroups.contactgroup_id = contactgroupmembers.contactgroup_id AND contactgroups.name = '" . $this->config['group'] . "' WHERE email = '" . $this->user_email . "'");
-
-		// if compose page is rendered, the dropdown will be added to
-		// the compose page to select an exercise
-		if ($rcmail->action == 'compose') {
-			$this->add_hook('render_page', array($this, 'add_dropdown_to_compose'));
-		}
 
 		// if user has the required permissions, the user will be able
 		// to view the message history table
@@ -93,6 +92,18 @@ class message_history extends rcube_plugin
 			'taskbar');
 		}
 
+		// Hooks for creating and viewing messages
+		if ($rcmail->action == 'compose') {
+			// Hook to add exercise selection dropdown to compose page
+			$this->add_hook('render_page', array($this, 'add_dropdown_to_compose'));
+		} else if (($rcmail->action == 'preview') || ($rcmail->action == 'show')) {
+			// Hook to display exercise name when previewing and viewing message
+			$this->add_hook('render_page', array($this, 'add_exercise_to_display'));
+			$this->add_hook('message_load', array($this, 'message_load_handler'));
+		}
+
+
+		// Determine the primary group to be logged with xAPI for this user
 		// get groups from global address book
 		$groups = $db->query("SELECT contactgroups.name FROM contactgroups INNER JOIN contactgroupmembers ON contactgroups.contactgroup_id = contactgroupmembers.contactgroup_id INNER JOIN contacts ON contacts.contact_id = contactgroupmembers.contact_id WHERE contacts.email = '" . $this->user_email . "'");
 		$records = $groups->fetchAll();
@@ -122,9 +133,8 @@ class message_history extends rcube_plugin
 		// Hook to log xapi when a message is sent
 		$this->add_hook('message_sent', [$this, 'xapilog_sent_message']);
 
-		// Hooks to log xapi when a user refreshes
+		// Hook to log xapi when a user refreshes
 		$this->add_hook('refresh', [$this, 'log_refresh']);
-		$this->add_hook('message_load', array($this, 'message_load_handler'));
 
 	}
 
@@ -195,12 +205,47 @@ class message_history extends rcube_plugin
 	// with the views the user is part of
 	public function message_load_handler($args)
 	{
+		rcube::console("message_history: message_load_handler");
+
 		$message = $args['object'];
 		$rcmail = rcmail::get_instance();
 		$raw_headers = $rcmail->storage->get_raw_headers($message->uid);
 		$headers = rcube_mime::parse_headers($raw_headers);
-		// TODO handle if exercise does not exist
-		$this->exercise = $headers['exercise'];
+		// handle if exercise does not exist
+		if (isset($headers['exercise'])) {
+			$this->exercise = $headers['exercise'];
+		}
+	}
+
+	// Function to dispaly exercise header on message previer page
+	public function add_exercise_to_display($args)
+	{
+		rcube::console("message_history: add_exer_to_display");
+
+		if ($args['template'] == 'message')
+		{
+			if ($this->exercise != NULL)
+			{
+				$doc = new DOMDocument();
+				$doc->loadHTML($args['content']);
+				$xpath = new DOMXPath($doc);
+				$header_div = $xpath->query('//div[contains(@class, "header-links")]');
+				$targetDiv = $header_div->item(0);
+
+				// Create Label
+				$label = $doc->createElement('p');
+				$label->setAttribute('id', 'exercise-selection');
+				$labelText = $doc->createTextNode("Exercise: " . $this->exercise);
+				$label->appendChild($labelText);
+
+				$targetDiv->appendChild($label);
+				$args['content'] = $doc->saveHTML();
+
+			}
+		}
+
+		return $args;
+
 	}
 
 	public function add_dropdown_to_compose($args)
@@ -276,8 +321,7 @@ class message_history extends rcube_plugin
 
 		if ($args['template'] == 'message')
 		{
-			$exercise = $this->exercise;
-			if ($exercise != NULL)
+			if ($this->exercise != NULL)
 			{
 				$doc = new DOMDocument();
 				$doc->loadHTML($args['content']);
@@ -288,7 +332,7 @@ class message_history extends rcube_plugin
 				// Create Label
 				$label = $doc->createElement('p');
 				$label->setAttribute('id', 'exercise-selection');
-				$labelText = $doc->createTextNode("Exercise: $exercise");
+				$labelText = $doc->createTextNode("Exercise: " . $this->exercise);
 				$label->appendChild($labelText);
 
 				$targetDiv->appendChild($label);
@@ -314,7 +358,7 @@ class message_history extends rcube_plugin
 		$subject = $headers['Subject'];
 		$from_orig = $headers['From'];
 		$to_orig = $headers['To'];
-		$exercise = $headers['Exercise'];
+		$this->exercise = $headers['Exercise'];
 		$time_sent = $headers['Date'];
 		preg_match('/<(.+?)@.+>/', $headers['Message-ID'], $matches_id);
 		$message_id = $matches_id[1];
@@ -364,7 +408,7 @@ class message_history extends rcube_plugin
 		foreach ($to_names as $to_name) {
 			$result = $db->query("INSERT INTO $table (from_user_name, to_user_name,
 				subject, time_sent, modified, read_status, roundcube_message_id, exercise) VALUES (?, ?, ?, ?, ?, ?, ?, ?)",
-				$from_name, $to_name, $subject, $time_sent, $db->now(), 'FALSE', $message_id, $exercise);
+				$from_name, $to_name, $subject, $time_sent, $db->now(), 'FALSE', $message_id, $this->exercise);
 		}
 
 		// if the message couldn't be inserted into the database table,
@@ -400,8 +444,9 @@ class message_history extends rcube_plugin
 		$to_array = explode(',', $to_names);
 
 		// Get From User Value
-		$from = $message->get_header('from');
-		$result = $db->query("SELECT name FROM contacts WHERE email = '$from'");
+		$from_email = $message->get_header('from');
+		$from_name = $from_email;
+		$result = $db->query("SELECT name FROM contacts WHERE email = '$from_email'");
 		if ($db->is_error($result)) {
 			rcube::raise_error([
 				'code' => 605, 'line' => __LINE__, 'file' => __FILE__,
@@ -409,16 +454,19 @@ class message_history extends rcube_plugin
 			], true, false);
 		}
 		$records = $db->fetch_assoc($result);
-		// TODO verify one
-		if (count($records) != 1) {
-			rcube::console("message_history: cannot find single record for " . $from);
+		// verify one record
+		if (!$records || (count($records) != 1)) {
+			rcube::console("message_history: cannot find single record for " . $from_email);
+		} else {
+			$from_name = $records['name'];
 		}
-		$from_name = $records['name'];
 
 		// Get Execise name from header
 		$raw_headers = $rcmail->storage->get_raw_headers($message->uid);
 		$headers = rcube_mime::parse_headers($raw_headers);
-		$exercise = $headers['exercise'];
+		if (isset($headers['exercise'])) {
+			$this->exercise = $headers['exercise'];
+		}
 
 		// Get Subject Value
 		$subject = $message->get_header('subject');
@@ -441,7 +489,8 @@ class message_history extends rcube_plugin
 			if ($check_record_exists->rowCount() === 0) {
 				$new_record = $db->query("INSERT INTO $table (from_user_name, to_user_name,
 					subject, time_sent, modified, read_status, roundcube_message_id, exercise) VALUES (?, ?, ?, ?, ?, ?, ?, ?)",
-					$from, $to, $parsed_subject, $timestamp, $db->now(), ($to === $this->user_email ? 'TRUE' : 'FALSE'), $message_id, $exercise);
+					$from_email, $to, $parsed_subject, $timestamp, $db->now(), ($to === $this->user_email ? 'TRUE' : 'FALSE'),
+					$message_id, $this->exercise);
 			}
 
 			// make sure only the record is marked as read for the
@@ -515,7 +564,7 @@ class message_history extends rcube_plugin
 		$context = new Context();
 		$platformContext = $context->withPlatform($_SERVER['SERVER_NAME']);
 		$languageContext = $platformContext->withLanguage('en-US');
-		// TODO determine group email domain from config
+		// determine group email domain from config
 		$team_email = $this->team . "@" . $this->domain;
 		$members = array();
 		array_push($members, $this->actor);
