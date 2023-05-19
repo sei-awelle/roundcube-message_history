@@ -560,10 +560,7 @@ class message_history extends rcube_plugin
 		$id = IRI::fromString('https://' . $_SERVER['SERVER_NAME']);
 		$activity = new Activity($id, $definition);
 		$sf->withObject($activity);
-
-		$statement = $sf->createStatement();
-
-		return $statement;
+		return $sf;
 	}
 
 	// Function send xapi statement
@@ -686,8 +683,9 @@ class message_history extends rcube_plugin
 		$sf->withContext($this->context);
 
 		$action = 'A user refreshed during the exercise event';
-		$statement = $this->set_object($languageMap, $action, $this->user_email, $sf);
-
+		$sf = $this->set_object($languageMap, $action, $this->user_email, $sf);
+		$statement = $sf->createStatement();
+	
 		// Send statement
 		$this->send_statement($statement, $statementsApiClient);
 
@@ -723,8 +721,9 @@ class message_history extends rcube_plugin
 		//$activity = new Activity($id, $definition);
 		//$sf->withObject($activity);
 		$action = 'A user logged in during the exercise event';
-		$statement = $this->set_object($languageMap, $action, $this->user_email, $sf);
-
+		$sf = $this->set_object($languageMap, $action, $this->user_email, $sf);
+		$statement = $sf->createStatement();
+	
 		// Set context
 		$this->build_context();
 		$sf->withContext($this->context);
