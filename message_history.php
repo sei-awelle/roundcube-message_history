@@ -52,49 +52,45 @@ class message_history extends rcube_plugin
 		$this->domain = $this->rcube->config->get('username_domain');
 		$db = rcmail::get_instance()->get_dbh();
 
-	
-
-
-		// Setup for adding button
 		$this->user_email = $rcmail->user->get_username();
-		$result = $db->query("SELECT email FROM contacts INNER JOIN contactgroupmembers ON contacts.contact_id = contactgroupmembers.contact_id INNER JOIN contactgroups ON contactgroups.contactgroup_id = contactgroupmembers.contactgroup_id AND contactgroups.name = '" . $this->config['group'] . "' WHERE email = '" . $this->user_email . "'");
 
-		// if user has the required permissions, the user will be able
-		// to view the message history table
-		if ($result->rowCount() > 0) {
-			$this->register_action('plugin.message_history', array($this, 'message_history_init'));
-			$this->register_task('message_history');
-			$skin_path = $this->local_skin_path();
-			$this->include_stylesheet("$skin_path/message_history.css");
-			$this->add_button(
-			[
-				'type' => 'link',
-				'label' => 'button_name',
-				'href' => '/?_task=message_history&_action=plugin.message_history',
-				'class' => 'logs',
-				'classact' => 'button logs',
-				'title' => 'button_name',
-				'domain' => $this->ID,
-				'innerclass' => 'inner',
-			],
-			'taskbar');
+		if (($rcmail->task != 'logout') && ($rcmail->task != 'login')) {
+			// Setup for adding button
+			$result = $db->query("SELECT email FROM contacts INNER JOIN contactgroupmembers ON contacts.contact_id = contactgroupmembers.contact_id INNER JOIN contactgroups ON contactgroups.contactgroup_id = contactgroupmembers.contactgroup_id AND contactgroups.name = '" . $this->config['group'] . "' WHERE email = '" . $this->user_email . "'");
+
+			// if user has the required permissions, the user will be able
+			// to view the message history table
+			if ($result->rowCount() > 0) {
+				$this->register_action('plugin.message_history', array($this, 'message_history_init'));
+				$this->register_task('message_history');
+				$skin_path = $this->local_skin_path();
+				$this->include_stylesheet("$skin_path/message_history.css");
+				$this->add_button(
+				[
+					'type' => 'link',
+					'label' => 'button_name',
+					'href' => '/?_task=message_history&_action=plugin.message_history',
+					'class' => 'logs',
+					'classact' => 'button logs',
+					'title' => 'button_name',
+					'domain' => $this->ID,
+					'innerclass' => 'inner',
+				],
+				'taskbar');
+			}
+			if ($rcmail->task == 'addressbook' || $rcmail->task == 'settings' || $rcmail->task == 'message_history') {
+				rcube::console("message_history: exiting for task=" . $rcmail->task);
+				return;
+			}
 		}
-		if ($rcmail->task == 'addressbook' || $rcmail->task == 'settings' || $rcmail->task == 'message_history') {
-			rcube::console("message_history: exiting for task=" . $rcmail->task);
-			return;
-		}
-
-
-
-
-
-
 
 
 
 
 
 		// Setup for xAPI information
+		$this->set_user();
+		/*
 		// convert from name to email address
 		$result = $db->query("SELECT name FROM contacts WHERE email = '" . $this->user_email . "'");
 		if ($db->is_error($result)) {
@@ -124,17 +120,21 @@ class message_history extends rcube_plugin
 			}
 		}
 
-
+		 */
 
 
 
 
 		// Set hooks for logging
 
-		if ($rcmail->task == 'logon') {
-			// Hook to log xapi when a user logings
+		if ($rcmail->task == 'login') {
+			// Hook to log xapi when a user logins
 			$this->add_hook('login_after', [$this, 'log_login']);
 			return;
+		}
+		if ($rcmail->task == 'logout') {
+			// Hook to log xapi when user logs out
+			$this->add_hook('logout_after', [$this, 'log_logout']);
 		}
 
 		// Hook to log xapi when a user refreshes
@@ -604,8 +604,8 @@ class message_history extends rcube_plugin
 		$agent = new Agent(InverseFunctionalIdentifier::withMbox(IRI::fromString("mailto:" . $this->user_email)), $this->user_name);
 		// TODO build account
 
-		$name = "Test";
-		$token = $_SESSION['oauth_token'];
+		//$name = "Test";
+		//$token = $_SESSION['oauth_token'];
 		//$access_token = $_SESSION['access_token'];
 		//$account = new Account($name, IRL::fromString('https://' . $_SERVER['SERVER_NAME'] . "?_task=message_history&_action=plugin.message_history&search=$x_search"));
 		// TODO get account info
@@ -769,9 +769,16 @@ class message_history extends rcube_plugin
 		return $args;
 	}
 
-	//Function to log xapi when a user logins
+	// Function to log xapi when a user logins
 	public function log_login($args)
 	{
+		rcube::console("message_history: log_login");
+
+		if ($this->user_email == NULL) {
+			$this->set_user();
+		}
+
+		rcube::console("message_history: set_user returned");
 
 		// Build xapi client
 		$this->build_client();
@@ -798,12 +805,62 @@ class message_history extends rcube_plugin
 		//$sf->withObject($activity);
 		$action = 'A user logged in during the exercise event';
 		$sf = $this->set_object($action, $this->user_email, $sf);
-		$statement = $sf->createStatement();
 	
 		// Set context
 		$this->build_context();
 		$sf->withContext($this->context);
 
+		// Create statement
+		$statement = $sf->createStatement();
+	
+		// Send statement
+		$this->send_statement($statement, $statementsApiClient);
+
+		return $args;
+	}
+
+
+	// Function to log xapi when a user logs out
+	public function log_logout($args)
+	{
+		rcube::console("message_history: log_logout");
+
+		// TODO there is no chance of pulling a token because there is no session
+		// TODO we may need to remove this
+		return $args;
+		// Build xapi client
+		$this->build_client();
+		$statementsApiClient = $this->xApiClient->getStatementsApiClient();
+
+		// Build statement
+		$sf = new StatementFactory();
+
+		// Set actor
+		$sf = $this->set_actor($sf);
+
+		// Set verb
+		$verb_id = 'https://w3id.org/xapi/adl/verbs/logged-out';
+		$sf = $this->set_verb($verb_id, $sf);
+
+		// Set object
+		//$mapName = $languageMap->withEntry('en-US', 'Use');
+		//$mapDesc = $languageMap->withEntry('en-US', 'A user logged in during the exercise event');
+		//$type = IRI::fromString('http://id.tincanapi.com/activitytype/login');
+		//$moreInfo = IRL::fromString('https://' . $_SERVER['SERVER_NAME'] . "?_task=message_history&_action=plugin.message_history&search=$user");
+		//$definition = new Definition($mapName, $mapDesc, $type, $moreInfo);
+		//$id = IRI::fromString('https://' . $_SERVER['SERVER_NAME']);
+		//$activity = new Activity($id, $definition);
+		//$sf->withObject($activity);
+		$action = 'A user logged in during the exercise event';
+		$sf = $this->set_object($action, $this->user_email, $sf);
+	
+		// Set context
+		$this->build_context();
+		$sf->withContext($this->context);
+
+		// Create statement
+		$statement = $sf->createStatement();
+	
 		// Send statement
 		$this->send_statement($statement, $statementsApiClient);
 
@@ -820,5 +877,43 @@ class message_history extends rcube_plugin
 			], true, false);
 	}
 
+	private function set_user()
+	{
+		$rcmail = rcmail::get_instance();
+
+		$this->user_email = $rcmail->user->get_username();
+		$db = rcmail::get_instance()->get_dbh();
+
+		// convert from name to email address
+		$result = $db->query("SELECT name FROM contacts WHERE email = '" . $this->user_email . "'");
+		if ($db->is_error($result)) {
+			rcube::raise_error([
+				'code' => 605, 'line' => __LINE__, 'file' => __FILE__,
+				'message' => "message_history: failed to pull name from database."
+				], true, false);
+		}
+		$records = $db->fetch_assoc($result);
+		// verify one entry
+		if (!$records || (count($records) != 1)) {
+			rcube::console("message_history: cannot find single record for " . $this->user_email);
+			return;
+		} else {
+			$this->user_name = $records['name'];
+		}
+
+		// Determine the primary group to be logged with xAPI for this user
+		// get groups from global address book
+		$groups = $db->query("SELECT contactgroups.name FROM contactgroups INNER JOIN contactgroupmembers ON contactgroups.contactgroup_id = contactgroupmembers.contactgroup_id INNER JOIN contacts ON contacts.contact_id = contactgroupmembers.contact_id WHERE contacts.email = '" . $this->user_email . "'");
+		$records = $groups->fetchAll();
+		// get primary team from config
+		foreach ($records as $record) {
+			if (in_array($record['name'], $this->config['teams'])) {
+				$this->team = $record['name'];
+				break;
+			}
+		}
+
+
+	}
 }
 ?>
