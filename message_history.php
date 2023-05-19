@@ -34,51 +34,29 @@ class message_history extends rcube_plugin
 	public function init()
 	{
 		$rcmail = rcmail::get_instance();
+		rcube::console("message_history: init task=" . $rcmail->task . " action=" . $rcmail->action);
+
+
+		// Exit tasks and actions that do not require loggin or addition of button
+		if (($rcmail->action == 'getunread') || ($rcmail->action == 'list') || ($rcmail->action == 'pagenav') || ($rcmail->action == 'autocomplete')) {
+			rcube::console("message_history: exiting for action=" . $rcmail->action);
+			return;
+		}
+
+
 		$this->rc = &$rcmail;
 		$this->add_texts('localization/', true);
 		$this->load_config();
 		$this->rcube = rcube::get_instance();
 		$this->config = $this->rcube->config->get('message_history');
 		$this->domain = $this->rcube->config->get('username_domain');
-
-		rcube::console("message_history: init task=" . $rcmail->task . " action=" . $rcmail->action);
-
-		if ($rcmail->action == 'getunread') {
-			rcube::console("message_history: exiting for action=" . $rcmail->action);
-		}
-
-		if ($rcmail->task == 'logon') {
-			// Hook to log xapi when a user logings
-			$this->add_hook('login_after', [$this, 'log_login']);
-		}
-
-		// Get the current user info and permissions
-		$this->user_email = $rcmail->user->get_username();
 		$db = rcmail::get_instance()->get_dbh();
 
-		// convert from name to email address
-		$result = $db->query("SELECT name FROM contacts WHERE email = '" . $this->user_email . "'");
-		if ($db->is_error($result)) {
-			rcube::raise_error([
-				'code' => 605, 'line' => __LINE__, 'file' => __FILE__,
-				'message' => "message_history: failed to pull name from database."
-				], true, false);
-		}
-		$records = $db->fetch_assoc($result);
-		// verify one entry
-		if (!$records || (count($records) != 1)) {
-			rcube::console("message_history: cannot find single record for " . $this->user_email);
-			return;
-		} else {
-			$this->user_name = $records['name'];
-		}
-
-		if ($rcmail->task == 'logon') {
-			// Hook to log xapi when a user logings
-			$this->add_hook('login_after', [$this, 'log_login']);
-		}
+	
 
 
+		// Setup for adding button
+		$this->user_email = $rcmail->user->get_username();
 		$result = $db->query("SELECT email FROM contacts INNER JOIN contactgroupmembers ON contacts.contact_id = contactgroupmembers.contact_id INNER JOIN contactgroups ON contactgroups.contactgroup_id = contactgroupmembers.contactgroup_id AND contactgroups.name = '" . $this->config['group'] . "' WHERE email = '" . $this->user_email . "'");
 
 		// if user has the required permissions, the user will be able
@@ -101,7 +79,38 @@ class message_history extends rcube_plugin
 			],
 			'taskbar');
 		}
+		if ($rcmail->task == 'addressbook' || $rcmail->task == 'settings' || $rcmail->task == 'message_history') {
+			rcube::console("message_history: exiting for task=" . $rcmail->task);
+			return;
+		}
 
+
+
+
+
+
+
+
+
+
+
+		// Setup for xAPI information
+		// convert from name to email address
+		$result = $db->query("SELECT name FROM contacts WHERE email = '" . $this->user_email . "'");
+		if ($db->is_error($result)) {
+			rcube::raise_error([
+				'code' => 605, 'line' => __LINE__, 'file' => __FILE__,
+				'message' => "message_history: failed to pull name from database."
+				], true, false);
+		}
+		$records = $db->fetch_assoc($result);
+		// verify one entry
+		if (!$records || (count($records) != 1)) {
+			rcube::console("message_history: cannot find single record for " . $this->user_email);
+			return;
+		} else {
+			$this->user_name = $records['name'];
+		}
 
 		// Determine the primary group to be logged with xAPI for this user
 		// get groups from global address book
@@ -115,8 +124,16 @@ class message_history extends rcube_plugin
 			}
 		}
 
-		if ($rcmail->task == 'addressbook' || $rcmail->task == 'settings' || $rcmail->task == 'message_history') {
-			rcube::console("message_history: not setting hooks for " . $rcmail->task);
+
+
+
+
+
+		// Set hooks for logging
+
+		if ($rcmail->task == 'logon') {
+			// Hook to log xapi when a user logings
+			$this->add_hook('login_after', [$this, 'log_login']);
 			return;
 		}
 
@@ -141,14 +158,15 @@ class message_history extends rcube_plugin
 			return;
 		}
 
-		// install user hooks
-		// Hook to Add Exercise Selection to Headers and to log sent
-		// message to the roundcube message history table
-		$this->add_hook('message_ready', array($this, 'log_sent_message'));
+		// Hooks for sending email
+		if ($rcmail->action == 'send') {
+			// Hook to Add Exercise Selection to Headers and to log sent
+			// message to the roundcube message history table
+			$this->add_hook('message_ready', array($this, 'log_sent_message'));
 
-		// Hook to log xapi when a message is sent
-		$this->add_hook('message_sent', [$this, 'xapilog_sent_message']);
-
+			// Hook to log xapi when a message is sent
+			$this->add_hook('message_sent', [$this, 'xapilog_sent_message']);
+		}
 	}
 
 	// Function to register plugin handler and to set the page title for the
@@ -351,6 +369,8 @@ class message_history extends rcube_plugin
 	// message record if it was sent through Roundcube
 	public function log_sent_message($args)
 	{
+		rcube::console("message_history: log_sent_message");
+
 		//Add Exercise Selection to Headers
 		$add_exercise = $_POST['_exercise'];
 		$args['message']->headers(array('Exercise' => $add_exercise), true);
@@ -632,6 +652,8 @@ class message_history extends rcube_plugin
 	// Function to log xapi when a message is sent
 	public function xapilog_sent_message($args)
 	{
+		rcube::console("message_history: xapilog_sent_message");
+
 		$db = rcmail::get_instance()->get_dbh();
 
 		$headers = $args['message']->headers();
