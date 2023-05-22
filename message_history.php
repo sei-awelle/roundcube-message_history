@@ -27,6 +27,8 @@ class message_history extends rcube_plugin
 	private $team;
 	private $user_email;
 	private $user_name;
+	private $sub;
+	private $iss;
 	private $domain;
 
 	// Initialization function
@@ -572,16 +574,18 @@ class message_history extends rcube_plugin
 	//Function to set xapi actor
 	private function set_actor($sf)
 	{
-		$agent = new Agent(InverseFunctionalIdentifier::withMbox(IRI::fromString("mailto:" . $this->user_email)), $this->user_name);
-		// TODO build account
+		rcube::console("message_history: set_actor");
 
-		//$name = "Test";
-		//$token = $_SESSION['oauth_token'];
-		//$access_token = $_SESSION['access_token'];
-		//$account = new Account($name, IRL::fromString('https://' . $_SERVER['SERVER_NAME'] . "?_task=message_history&_action=plugin.message_history&search=$x_search"));
+		$agent = new Agent(InverseFunctionalIdentifier::withMbox(IRI::fromString("mailto:" . $this->user_email)), $this->user_name);
+		// build account
+		if ($this->iss == NULL) {
+			rcube::console("ERROR");
+		}
+		$account = new Account($this->sub, IRL::fromString($this->iss));
 		// TODO get account info
 		$this->actor = $agent;
 		$sf->withActor($agent);
+		//$sf->withAccount($account);
 		return $sf;
 	}
 
@@ -697,9 +701,11 @@ class message_history extends rcube_plugin
 	}
 
 
-	//Function to log xapi when a user refreshes
+	// Function to log xapi when a user refreshes
 	public function log_check($args)
 	{
+		rcube::console("message_history: log_check");
+
 		// Build xapi client
 		$this->build_client();
 		$statementsApiClient = $this->xApiClient->getStatementsApiClient();
@@ -898,6 +904,8 @@ class message_history extends rcube_plugin
 
 	private function set_user()
 	{
+		rcube::console("message_history: set_user");
+
 		$rcmail = rcmail::get_instance();
 
 		$this->user_email = $rcmail->user->get_username();
@@ -932,7 +940,17 @@ class message_history extends rcube_plugin
 			}
 		}
 
+		if (!isset($_SESSION['oauth_token']['access_token'])) {
+			rcube::console("message_history: no token set for for " . $this->user_email);
+			return;
+		}
 
+		// get sub and issuer for oauth
+		$token = $_SESSION['oauth_token']['access_token'];
+		$decoded = json_decode(base64_decode(str_replace('_', '/', str_replace('-', '+', explode('.', $token)[1]))));
+		$this->sub = $decoded->sub;
+		$this->iss = $decoded->iss;
+		rcube::console("sub: " . $this->sub . ' iss: ' . $this->iss);
 	}
 }
 ?>
