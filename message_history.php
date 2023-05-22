@@ -386,7 +386,7 @@ class message_history extends rcube_plugin
 		// convert to email addresses to names
 		$to_names = array();
 		foreach ($to_emails as $to_email) {
-				$result = $db->query("SELECT name FROM contacts WHERE email = '$to_email'");
+			$result = $db->query("SELECT name FROM contacts WHERE email = '$to_email'");
    			if ($db->is_error($result)) {
 				rcube::raise_error([
 					'code' => 605, 'line' => __LINE__, 'file' => __FILE__,
@@ -478,22 +478,31 @@ class message_history extends rcube_plugin
 			// first check if the email record exists (if it was
 			// sent through Roundcube)
 			$result = $db->query("SELECT * FROM $table WHERE roundcube_message_id = '$message_id' AND to_user_name = '$to_name'");
+			if ($db->is_error($result)) {
+				rcube::raise_error([
+					'code' => 605, 'line' => __LINE__, 'file' => __FILE__,
+					'message' => "message_history: failed to pull existing record from database."
+					], true, false);
+			}
+			$records = $db->fetch_assoc($result);
 			// if the record doesn't exist, insert the new record
 			// into the database table
-			if ($result->rowCount() === 0) {
+			if ($result->rowCount() > 1) {
+				rcube::console("message_history: multiple records exist for message from $from_name to $to_name with message_id $message_id");
+			} else if ($result->rowCount() == 0) {
 				rcube::console("message_history: inserting new record");
 				$new_record = $db->query("INSERT INTO $table (from_user_name, to_user_name,
 					subject, time_sent, modified, read_status, roundcube_message_id, exercise) VALUES (?, ?, ?, ?, ?, ?, ?, ?)",
 					$from_name, $to_name, $parsed_subject, $timestamp, $db->now(), ($to_name === $this->user_name ? 'TRUE' : 'FALSE'),
 					$message_id, $this->exercise);
-			} else {
-				rcube::console("message_history: records exist for message from $from_name to $to_name");
-			}
-
-			// make sure only the record is marked as read for the
-			// user who is actually reading the message
-			// TODO only attempt update if the read_status is false
-			if ($to_name === $this->user_name) { // check if the current recipient matches the logged in user
+				if ($db->is_error($result)) {
+					rcube::raise_error([
+						'code' => 605, 'line' => __LINE__, 'file' => __FILE__,
+						'message' => "message_history: failed to insert record."
+		   				], true, false);
+				}
+			} else if (($to_name === $this->user_name) && ($records['read_status'] == FALSE)) {
+				// check if the current recipient matches the logged in user
 				rcube::console("message_history: updating record");
 				// update is_read column to 1 for this message
 				$result = $db->query("UPDATE $table SET read_status = TRUE WHERE roundcube_message_id = '$message_id' AND to_user_name = '$to_name'");
