@@ -138,7 +138,8 @@ class message_history extends rcube_plugin
 		}
 
 		// Hook to log xapi when a user refreshes
-		if (($rcmail->action == 'refresh') || ($rcmail->action == 'check-recent')) {
+		//if (($rcmail->action == 'refresh') || ($rcmail->action == 'check-recent')) {
+		if ($rcmail->action == 'check-recent') {
 			$this->add_hook('refresh', [$this, 'log_refresh']);
 			return;
 		}
