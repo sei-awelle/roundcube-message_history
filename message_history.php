@@ -716,8 +716,6 @@ class message_history extends rcube_plugin
 		$verb_id = 'http://id.tincanapi.com/verb/viewed';
 		$sf = $this->set_verb($verb_id, $sf);
 
-		// TODO add something to differentiate refresh (auto) vs check-recent (manual)
-
 		// Set object
 		//$mapName = $languageMap->withEntry('en-US', 'Use');
 		//$mapDesc = $languageMap->withEntry('en-US', 'A user refreshed during the exercise event');
@@ -846,9 +844,6 @@ class message_history extends rcube_plugin
 	{
 		rcube::console("message_history: log_logout");
 
-		// TODO there is no chance of pulling a token because there is no session
-		// TODO we may need to remove this
-		return $args;
 		// Build xapi client
 		$this->build_client();
 		$statementsApiClient = $this->xApiClient->getStatementsApiClient();
