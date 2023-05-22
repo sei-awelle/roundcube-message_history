@@ -576,16 +576,12 @@ class message_history extends rcube_plugin
 	{
 		rcube::console("message_history: set_actor");
 
-		$agent = new Agent(InverseFunctionalIdentifier::withMbox(IRI::fromString("mailto:" . $this->user_email)), $this->user_name);
-		// build account
-		if ($this->iss == NULL) {
-			rcube::console("ERROR");
-		}
+		$mbox = IRI::fromString("mailto:" . $this->user_email);
 		$account = new Account($this->sub, IRL::fromString($this->iss));
-		// TODO get account info
+		$ifi = InverseFunctionalIdentifier::withAccount($account);
+		$agent = new Agent($ifi, $this->user_name);
 		$this->actor = $agent;
 		$sf->withActor($agent);
-		//$sf->withAccount($account);
 		return $sf;
 	}
 
@@ -739,7 +735,7 @@ class message_history extends rcube_plugin
 		$action = 'A user refreshed during the exercise event';
 		$sf = $this->set_object($action, $this->user_email, $sf);
 		$statement = $sf->createStatement();
-	
+
 		// Send statement
 		$this->send_statement($statement, $statementsApiClient);
 
@@ -780,14 +776,14 @@ class message_history extends rcube_plugin
 		//$sf->withObject($activity);
 		$action = 'A user refreshed their login during the exercise event';
 		$sf = $this->set_object($action, $this->user_email, $sf);
-	
+
 		// Set context
 		$this->build_context();
 		$sf->withContext($this->context);
 
 		// Create statement
 		$statement = $sf->createStatement();
-	
+
 		// Send statement
 		$this->send_statement($statement, $statementsApiClient);
 
@@ -830,14 +826,14 @@ class message_history extends rcube_plugin
 		//$sf->withObject($activity);
 		$action = 'A user logged in during the exercise event';
 		$sf = $this->set_object($action, $this->user_email, $sf);
-	
+
 		// Set context
 		$this->build_context();
 		$sf->withContext($this->context);
 
 		// Create statement
 		$statement = $sf->createStatement();
-	
+
 		// Send statement
 		$this->send_statement($statement, $statementsApiClient);
 
@@ -878,14 +874,14 @@ class message_history extends rcube_plugin
 		//$sf->withObject($activity);
 		$action = 'A user logged in during the exercise event';
 		$sf = $this->set_object($action, $this->user_email, $sf);
-	
+
 		// Set context
 		$this->build_context();
 		$sf->withContext($this->context);
 
 		// Create statement
 		$statement = $sf->createStatement();
-	
+
 		// Send statement
 		$this->send_statement($statement, $statementsApiClient);
 
