@@ -90,57 +90,27 @@ class message_history extends rcube_plugin
 
 		// Setup for xAPI information
 		$this->set_user();
-		/*
-		// convert from name to email address
-		$result = $db->query("SELECT name FROM contacts WHERE email = '" . $this->user_email . "'");
-		if ($db->is_error($result)) {
-			rcube::raise_error([
-				'code' => 605, 'line' => __LINE__, 'file' => __FILE__,
-				'message' => "message_history: failed to pull name from database."
-				], true, false);
-		}
-		$records = $db->fetch_assoc($result);
-		// verify one entry
-		if (!$records || (count($records) != 1)) {
-			rcube::console("message_history: cannot find single record for " . $this->user_email);
-			return;
-		} else {
-			$this->user_name = $records['name'];
-		}
 
-		// Determine the primary group to be logged with xAPI for this user
-		// get groups from global address book
-		$groups = $db->query("SELECT contactgroups.name FROM contactgroups INNER JOIN contactgroupmembers ON contactgroups.contactgroup_id = contactgroupmembers.contactgroup_id INNER JOIN contacts ON contacts.contact_id = contactgroupmembers.contact_id WHERE contacts.email = '" . $this->user_email . "'");
-		$records = $groups->fetchAll();
-		// get primary team from config
-		foreach ($records as $record) {
-			if (in_array($record['name'], $this->config['teams'])) {
-				$this->team = $record['name'];
-				break;
-			}
-		}
-
-		 */
-
-
-
-
-		// Set hooks for logging
-
+		// Set hooks for login
 		if ($rcmail->task == 'login') {
 			// Hook to log xapi when a user logins
 			$this->add_hook('login_after', [$this, 'log_login']);
 			return;
 		}
+
+		// Set hook for logout
 		if ($rcmail->task == 'logout') {
 			// Hook to log xapi when user logs out
 			$this->add_hook('logout_after', [$this, 'log_logout']);
 		}
 
+		// Hook to log xapi when user tokken is refreshed
+		$this->add_hook('oauth_refresh_token', [$this, 'log_refresh']);
+
 		// Hook to log xapi when a user refreshes
 		//if (($rcmail->action == 'refresh') || ($rcmail->action == 'check-recent')) {
 		if ($rcmail->action == 'check-recent') {
-			$this->add_hook('refresh', [$this, 'log_refresh']);
+			$this->add_hook('refresh', [$this, 'log_check']);
 			return;
 		}
 
@@ -728,7 +698,7 @@ class message_history extends rcube_plugin
 
 
 	//Function to log xapi when a user refreshes
-	public function log_refresh($args)
+	public function log_check($args)
 	{
 		// Build xapi client
 		$this->build_client();
@@ -771,6 +741,56 @@ class message_history extends rcube_plugin
 	}
 
 	// Function to log xapi when a user logins
+	public function log_refresh($args)
+	{
+		rcube::console("message_history: log_refresh");
+
+		if ($this->user_email == NULL) {
+			$this->set_user();
+		}
+
+		// Build xapi client
+		$this->build_client();
+		$statementsApiClient = $this->xApiClient->getStatementsApiClient();
+
+		// Build statement
+		$sf = new StatementFactory();
+
+		// Set actor
+		$sf = $this->set_actor($sf);
+
+		// Set verb
+		$verb_id = 'https://w3id.org/xapi/adl/verbs/logged-in';
+		$sf = $this->set_verb($verb_id, $sf);
+
+		// Set object
+		//$mapName = $languageMap->withEntry('en-US', 'Use');
+		//$mapDesc = $languageMap->withEntry('en-US', 'A user logged in during the exercise event');
+		//$type = IRI::fromString('http://id.tincanapi.com/activitytype/login');
+		//$moreInfo = IRL::fromString('https://' . $_SERVER['SERVER_NAME'] . "?_task=message_history&_action=plugin.message_history&search=$user");
+		//$definition = new Definition($mapName, $mapDesc, $type, $moreInfo);
+		//$id = IRI::fromString('https://' . $_SERVER['SERVER_NAME']);
+		//$activity = new Activity($id, $definition);
+		//$sf->withObject($activity);
+		$action = 'A user refreshed their login during the exercise event';
+		$sf = $this->set_object($action, $this->user_email, $sf);
+	
+		// Set context
+		$this->build_context();
+		$sf->withContext($this->context);
+
+		// Create statement
+		$statement = $sf->createStatement();
+	
+		// Send statement
+		$this->send_statement($statement, $statementsApiClient);
+
+		return $args;
+	}
+
+
+
+	// Function to log xapi when a user logins
 	public function log_login($args)
 	{
 		rcube::console("message_history: log_login");
@@ -778,8 +798,6 @@ class message_history extends rcube_plugin
 		if ($this->user_email == NULL) {
 			$this->set_user();
 		}
-
-		rcube::console("message_history: set_user returned");
 
 		// Build xapi client
 		$this->build_client();
