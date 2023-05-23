@@ -23,6 +23,7 @@ class message_history extends rcube_plugin
 	private $xApiClient;
 	private $context;
 	private $exercise;
+	private $message_id;
 	private $actor;
 	private $team;
 	private $user_email;
@@ -361,7 +362,7 @@ class message_history extends rcube_plugin
 		}
 		$time_sent = $headers['Date'];
 		preg_match('/<(.+?)@.+>/', $headers['Message-ID'], $matches_id);
-		$message_id = $matches_id[1];
+		$this->message_id = $matches_id[1];
 		// get just the to emails
 		preg_match_all('/<(.+?)>/', $to_orig, $matches);
 		//$to_emails = implode(',', $matches);
@@ -406,7 +407,7 @@ class message_history extends rcube_plugin
 		foreach ($to_names as $to_name) {
 			$result = $db->query("INSERT INTO $table (from_user_name, to_user_name,
 				subject, time_sent, modified, read_status, roundcube_message_id, exercise) VALUES (?, ?, ?, ?, ?, ?, ?, ?)",
-				$from_name, $to_name, $subject, $time_sent, $db->now(), 'FALSE', $message_id, $this->exercise);
+				$from_name, $to_name, $subject, $time_sent, $db->now(), 'FALSE', $this->message_id, $this->exercise);
 		}
 
 		// if the message couldn't be inserted into the database table,
@@ -432,7 +433,7 @@ class message_history extends rcube_plugin
 		// Get the required information from the message headers
 		$message = $args['message'];
 		preg_match('/<(.+?)@.+>/', $message->get_header('Message-ID'), $matches);
-		$message_id = $matches[1];
+		$this->message_id = $matches[1];
 
 		// Get To User Value
 		$to_header = $message->get_header('to');
@@ -481,7 +482,7 @@ class message_history extends rcube_plugin
 			$to_name = trim($to_name);
 			// first check if the email record exists (if it was
 			// sent through Roundcube)
-			$result = $db->query("SELECT * FROM $table WHERE roundcube_message_id = '$message_id' AND to_user_name = '$to_name'");
+			$result = $db->query("SELECT * FROM $table WHERE roundcube_message_id = '" . $this->message_id . "' AND to_user_name = '$to_name'");
 			if ($db->is_error($result)) {
 				rcube::raise_error([
 					'code' => 605, 'line' => __LINE__, 'file' => __FILE__,
@@ -492,13 +493,13 @@ class message_history extends rcube_plugin
 			// if the record doesn't exist, insert the new record
 			// into the database table
 			if ($result->rowCount() > 1) {
-				rcube::console("message_history: multiple records exist for message from $from_name to $to_name with message_id $message_id");
+				rcube::console("message_history: multiple records exist for message from $from_name to $to_name with message_id" . $this->message_id);
 			} else if ($result->rowCount() == 0) {
 				rcube::console("message_history: inserting new record");
 				$new_record = $db->query("INSERT INTO $table (from_user_name, to_user_name,
 					subject, time_sent, modified, read_status, roundcube_message_id, exercise) VALUES (?, ?, ?, ?, ?, ?, ?, ?)",
 					$from_name, $to_name, $parsed_subject, $timestamp, $db->now(), ($to_name === $this->user_name ? 'TRUE' : 'FALSE'),
-					$message_id, $this->exercise);
+					$this->message_id, $this->exercise);
 				if ($db->is_error($result)) {
 					rcube::raise_error([
 						'code' => 605, 'line' => __LINE__, 'file' => __FILE__,
@@ -509,7 +510,7 @@ class message_history extends rcube_plugin
 				// check if the current recipient matches the logged in user
 				rcube::console("message_history: updating record");
 				// update is_read column to 1 for this message
-				$result = $db->query("UPDATE $table SET read_status = TRUE WHERE roundcube_message_id = '$message_id' AND to_user_name = '$to_name'");
+				$result = $db->query("UPDATE $table SET read_status = TRUE WHERE roundcube_message_id = '" . $this->message_id . "' AND to_user_name = '$to_name'");
 				if ($db->is_error($result)) {
 					rcube::raise_error([
 						'code' => 605, 'line' => __LINE__, 'file' => __FILE__,
@@ -533,18 +534,8 @@ class message_history extends rcube_plugin
 		$this->set_verb($verb_id, $sf);
 
 		// set object
-		$languageMap = new LanguageMap();
-		#$mapName = $languageMap->withEntry('en-US', $parsed_subject);
-		$mapName = $languageMap->withEntry('en-US', 'Email');
-		$mapDesc = $languageMap->withEntry('en-US', 'An email message sent or read during the exercise event');
-		$type = IRI::fromString('http://id.tincanapi.com/activitytype/email');
-		$moreInfo = IRL::fromString('https://' . $_SERVER['SERVER_NAME'] . "?_task=message_history&_action=plugin.message_history&search=$message_id");
-		$definition = new Definition($mapName, $mapDesc, $type, $moreInfo);
-		#$imap = "imap://" . $this->rcube->config->get('imap_host');
-		#$id = IRI::fromString($imap . "/" . $message_id);
-		$id = IRI::fromString('https://' . $_SERVER['SERVER_NAME']);
-	  	$activity = new Activity($id, $definition);
-		$sf->withObject($activity);
+		$type = 'http://id.tincanapi.com/activitytype/email';
+		$this->set_object($type, $sf);
 
 		// with context
 		$this->build_context();
@@ -601,6 +592,8 @@ class message_history extends rcube_plugin
 	// Function to set xapi verb
 	private function set_verb($path, $sf)
 	{
+		rcube::console("message_historyu: set_verb");
+
 		$languageMap = new LanguageMap();
 		$map = $languageMap->withEntry("en-US", basename($path));
 		$verb = new Verb(IRI::fromString($path), $map);
@@ -609,13 +602,25 @@ class message_history extends rcube_plugin
 	}
 
 	// Function to set xapi object
-	private function set_object($x_action, $x_search, $sf)
+	private function set_object($path, $sf)
 	{
+		rcube::console("message_history: set_object");
+
 		$languageMap = new LanguageMap();
-		$mapName = $languageMap->withEntry('en-US', 'Use');
-		$mapDesc = $languageMap->withEntry('en-US', $x_action);
-		$type = IRI::fromString("http://id.tincanapi.com/activity/login");
-		$moreInfo = IRL::fromString('https://' . $_SERVER['SERVER_NAME'] . "?_task=message_history&_action=plugin.message_history&search=$x_search");
+
+		// default to configure for system
+		$moreInfo = IRL::fromString('https://' . $_SERVER['SERVER_NAME'] . '?_task=message_history&_action=plugin.message_history&search=' . urlencode($this->user_name));
+		$mapName = $languageMap->withEntry('en-US', basename($path));
+		$mapDesc = $languageMap->withEntry('en-US', 'Email messaging system used during the exercise event');
+		$type = IRI::fromString('http://id.tincanapi.com/activitytype/resource');
+
+		// configure for email
+		if ($this->message_id) {
+			$moreInfo = IRL::fromString('https://' . $_SERVER['SERVER_NAME'] . '?_task=message_history&_action=plugin.message_history&search=' . $this->message_id);
+			$mapName = $languageMap->withEntry('en-US', basename($path));
+			$mapDesc = $languageMap->withEntry('en-US', 'An email message sent or read during the exercise event');
+			$type = IRI::fromString('http://id.tincanapi.com/activitytype/email');
+		}
 		$definition = new Definition($mapName, $mapDesc, $type, $moreInfo);
 		$id = IRI::fromString('https://' . $_SERVER['SERVER_NAME']);
 		$activity = new Activity($id, $definition);
@@ -645,7 +650,7 @@ class message_history extends rcube_plugin
 		$from_orig = $headers['From'];
 		$to_orig = $headers['To'];
 		preg_match('/<(.+?)@.+>/', $headers['Message-ID'], $matches);
-		$message_id = $matches[1];
+		$this->message_id = $matches[1];
 
 		// get just the to emails
 		preg_match_all('/<(.+?)>/', $to_orig, $matches);
@@ -685,16 +690,8 @@ class message_history extends rcube_plugin
 		$this->set_verb($verb_id, $sf);
 
 		// set object
-		$languageMap = new LanguageMap();
-		$mapName = $languageMap->withEntry('en-US', 'Email');
-		$mapDesc = $languageMap->withEntry('en-US', 'An email message sent or read during the exercise event');
-		$type = IRI::fromString('http://id.tincanapi.com/activitytype/email');
-		$moreInfo = IRL::fromString('https://' . $_SERVER['SERVER_NAME'] . "?_task=message_history&_action=plugin.message_history&search=$message_id");
-		$definition = new Definition($mapName, $mapDesc, $type, $moreInfo);
-		$id = IRI::fromString('https://' . $_SERVER['SERVER_NAME']);
-		$activity = new Activity($id, $definition);
-		$sf->withObject($activity);
-
+		$type = 'http://id.tincanapi.com/activitytype/email';
+		$this->set_object($type, $sf);
 
 		// with context
 		$this->build_context();
@@ -726,25 +723,18 @@ class message_history extends rcube_plugin
 		$sf = $this->set_actor($sf);
 
 		// Set verb
-		$verb_id = 'http://id.tincanapi.com/verb/viewed';
+		$verb_id = 'http://id.tincanapi.com/verb/previewed';
 		$sf = $this->set_verb($verb_id, $sf);
 
 		// Set object
-		//$mapName = $languageMap->withEntry('en-US', 'Use');
-		//$mapDesc = $languageMap->withEntry('en-US', 'A user refreshed during the exercise event');
-		// $type = IRI::fromString('http://id.tincanapi.com/activitytype/refresh');
-		//$moreInfo = IRL::fromString('https://' . $_SERVER['SERVER_NAME'] . "?_task=message_history&_action=plugin.message_history&search=$user");
-		//$definition = new Definition($mapName, $mapDesc, $type, $moreInfo);
-		//$id = IRI::fromString('https://' . $_SERVER['SERVER_NAME']);
-		//$activity = new Activity($id, $definition);
-		//$sf->withObject($activity);
+		$type = 'http://id.tincanapi.com/activitytype/resource';
 
 		// Set context
 		$this->build_context();
 		$sf->withContext($this->context);
 
-		$action = 'A user refreshed during the exercise event';
-		$sf = $this->set_object($action, $this->user_email, $sf);
+		//$action = 'A user refreshed during the exercise event';
+		$sf = $this->set_object($type, $sf);
 		$statement = $sf->createStatement();
 
 		// Send statement
@@ -753,7 +743,7 @@ class message_history extends rcube_plugin
 		return $args;
 	}
 
-	// Function to log xapi when a user logins
+	// Function to log xapi when a user login gets checked
 	public function log_refresh($args)
 	{
 		rcube::console("message_history: log_refresh");
@@ -777,16 +767,8 @@ class message_history extends rcube_plugin
 		$sf = $this->set_verb($verb_id, $sf);
 
 		// Set object
-		//$mapName = $languageMap->withEntry('en-US', 'Use');
-		//$mapDesc = $languageMap->withEntry('en-US', 'A user logged in during the exercise event');
-		//$type = IRI::fromString('http://id.tincanapi.com/activitytype/login');
-		//$moreInfo = IRL::fromString('https://' . $_SERVER['SERVER_NAME'] . "?_task=message_history&_action=plugin.message_history&search=$user");
-		//$definition = new Definition($mapName, $mapDesc, $type, $moreInfo);
-		//$id = IRI::fromString('https://' . $_SERVER['SERVER_NAME']);
-		//$activity = new Activity($id, $definition);
-		//$sf->withObject($activity);
-		$action = 'A user refreshed their login during the exercise event';
-		$sf = $this->set_object($action, $this->user_email, $sf);
+		$type = 'http://id.tincanapi.com/activitytype/resource';
+		$sf = $this->set_object($type, $sf);
 
 		// Set context
 		$this->build_context();
@@ -827,16 +809,11 @@ class message_history extends rcube_plugin
 		$sf = $this->set_verb($verb_id, $sf);
 
 		// Set object
-		//$mapName = $languageMap->withEntry('en-US', 'Use');
-		//$mapDesc = $languageMap->withEntry('en-US', 'A user logged in during the exercise event');
-		//$type = IRI::fromString('http://id.tincanapi.com/activitytype/login');
+		$type = 'http://id.tincanapi.com/activitytype/resource';
 		//$moreInfo = IRL::fromString('https://' . $_SERVER['SERVER_NAME'] . "?_task=message_history&_action=plugin.message_history&search=$user");
-		//$definition = new Definition($mapName, $mapDesc, $type, $moreInfo);
 		//$id = IRI::fromString('https://' . $_SERVER['SERVER_NAME']);
-		//$activity = new Activity($id, $definition);
-		//$sf->withObject($activity);
-		$action = 'A user logged in during the exercise event';
-		$sf = $this->set_object($action, $this->user_email, $sf);
+		//$action = 'A user logged in during the exercise event';
+		$sf = $this->set_object($type, $sf);
 
 		// Set context
 		$this->build_context();
@@ -874,14 +851,11 @@ class message_history extends rcube_plugin
 		// Set object
 		//$mapName = $languageMap->withEntry('en-US', 'Use');
 		//$mapDesc = $languageMap->withEntry('en-US', 'A user logged in during the exercise event');
-		//$type = IRI::fromString('http://id.tincanapi.com/activitytype/login');
+		$type = 'http://id.tincanapi.com/activitytype/resource';
 		//$moreInfo = IRL::fromString('https://' . $_SERVER['SERVER_NAME'] . "?_task=message_history&_action=plugin.message_history&search=$user");
-		//$definition = new Definition($mapName, $mapDesc, $type, $moreInfo);
 		//$id = IRI::fromString('https://' . $_SERVER['SERVER_NAME']);
-		//$activity = new Activity($id, $definition);
-		//$sf->withObject($activity);
-		$action = 'A user logged in during the exercise event';
-		$sf = $this->set_object($action, $this->user_email, $sf);
+		//$action = 'A user logged in during the exercise event';
+		$sf = $this->set_object($type, $sf);
 
 		// Set context
 		$this->build_context();
