@@ -273,11 +273,11 @@ class message_history extends rcube_plugin
 		// if the current template shown is the compose template, a
 		// dropdown will be added with the available user views
 		if ($args['template'] == 'compose') {
-			$doc = new DOMDocument();
-			$doc->loadHTML($args['content']);
+			$doc = new DOMDocument('1.0', RCUBE_CHARSET);
+			@$doc->loadHTML($args['content']);
 			$subject_div = $doc->getElementById('compose_subject');
 
-			//Create Parent Div
+			//Create Parent div
 			$parent_div = $doc->createElement('div');
 			$parent_div->setAttribute('id', 'compose_exercise');
 			$parent_div->setAttribute('class', 'form-group row');
@@ -290,7 +290,7 @@ class message_history extends rcube_plugin
 			$label->appendChild($labelText);
 			$parent_div->appendChild($label);
 
-			//Add Child dIV
+			//Add Child div
 			$child_div = $doc->createElement('div');
 			$child_div->setAttribute('class', 'col-10');
 			$parent_div->appendChild($child_div);
@@ -317,8 +317,8 @@ class message_history extends rcube_plugin
 
 		if ($args['template'] == 'message') {
 			if ($this->exercise != NULL) {
-				$doc = new DOMDocument();
-				$doc->loadHTML($args['content']);
+				$doc = new DOMDocument('1.0', RCUBE_CHARSET);
+				@$doc->loadHTML($args['content']);
 				$xpath = new DOMXPath($doc);
 				$header_div = $xpath->query('//div[contains(@class, "header-links")]');
 				$targetDiv = $header_div->item(0);
@@ -345,8 +345,10 @@ class message_history extends rcube_plugin
 		rcube::console("message_history: log_sent_message");
 
 		//Add Exercise Selection to Headers
-		$add_exercise = $_POST['_exercise'];
-		$args['message']->headers(array('Exercise' => $add_exercise), true);
+		if (isset($_POST['_exercise'])) {
+			$args['message']->headers(array('Exercise' => $_POST['_exercise']), true);
+			rcube::console("message_history: exercise in post variable: " . $_POST['_exercise']);
+		}
 		$db = rcmail::get_instance()->get_dbh();
 
 		// Obtain the message information from the message headers
@@ -354,7 +356,9 @@ class message_history extends rcube_plugin
 		$subject = $headers['Subject'];
 		$from_orig = $headers['From'];
 		$to_orig = $headers['To'];
-		$this->exercise = $headers['Exercise'];
+		if (isset($headers['Exercise'])) {
+			$this->exercise = $headers['Exercise'];
+		}
 		$time_sent = $headers['Date'];
 		preg_match('/<(.+?)@.+>/', $headers['Message-ID'], $matches_id);
 		$message_id = $matches_id[1];
