@@ -11,6 +11,7 @@ use Xabbuh\XApi\Model\Verb;
 use Xabbuh\XApi\Model\Activity;
 use Xabbuh\XApi\Model\LanguageMap;
 use Xabbuh\XApi\Model\Context;
+use Xabbuh\XApi\Model\ContextActivities;
 use Xabbuh\XApi\Model\Definition;
 use Xabbuh\XApi\Model\IRL;
 use Xabbuh\XApi\Model\Account;
@@ -22,7 +23,8 @@ class message_history extends rcube_plugin
 	private $rcube;
 	private $xApiClient;
 	private $context;
-	private $exercise;
+	private $exercise_name;
+	private $exercise_id;
 	private $message_id;
 	private $actor;
 	private $team;
@@ -218,7 +220,7 @@ class message_history extends rcube_plugin
 		$headers = rcube_mime::parse_headers($raw_headers);
 		// handle if exercise does not exist
 		if (isset($headers['exercise'])) {
-			$this->exercise = $headers['exercise'];
+			$this->exercise_name = $headers['exercise'];
 		}
 	}
 
@@ -227,7 +229,7 @@ class message_history extends rcube_plugin
 	{
 		rcube::console("message_history: add_exercise_to_display");
 
-		if (($args['template'] == 'message') && ($this->exercise != NULL)) {
+		if (($args['template'] == 'message') && ($this->exercise_name != NULL)) {
 			$doc = new DOMDocument();
 			$doc->loadHTML($args['content']);
 			$xpath = new DOMXPath($doc);
@@ -237,7 +239,7 @@ class message_history extends rcube_plugin
 			// Create Label
 			$label = $doc->createElement('p');
 			$label->setAttribute('id', 'exercise-selection');
-			$labelText = $doc->createTextNode("Exercise: " . $this->exercise);
+			$labelText = $doc->createTextNode("Exercise: " . $this->exercise_name);
 			$label->appendChild($labelText);
 
 			$targetDiv->appendChild($label);
@@ -252,7 +254,7 @@ class message_history extends rcube_plugin
 
 		// Information to make an api call to obtain the views the
 		// current user is part of
-		$url = 'https://player.cwdoe.cmusei.dev/api/me/views';
+		$url = $this->config['player_api_url'] . '/me/views';
 		$headers = array(
 			'Cache-Control: no-cache, no-store',
 			'Pragma: no-cache',
@@ -302,22 +304,20 @@ class message_history extends rcube_plugin
 			$select_element->setAttribute('id', 'compose-exercise');
 			$select_element->setAttribute('tabindex', '2');
 			$select_element->setAttribute('class', 'form-control');
-			foreach ($decoded as $item) {
-				$name = $item['name'];
-				$option_element = $doc->createElement('option', $name);
-				$option_element->setAttribute('value', $name);
-	   	 			$select_element->appendChild($option_element);
+			foreach ($decoded as $view) {
+				$option_element = $doc->createElement('option', $view['name']);
+				$option_element->setAttribute('value', $view['id']);
+	   	 		$select_element->appendChild($option_element);
 			}
 
 			$child_div->appendChild($select_element);
-
 			$subject_div->parentNode->insertBefore($parent_div, $subject_div->nextSibling);
 			$args['content'] = $doc->saveHTML();
 		}
 
 
 		if ($args['template'] == 'message') {
-			if ($this->exercise != NULL) {
+			if ($this->exercise_name != NULL) {
 				$doc = new DOMDocument('1.0', RCUBE_CHARSET);
 				@$doc->loadHTML($args['content']);
 				$xpath = new DOMXPath($doc);
@@ -327,7 +327,7 @@ class message_history extends rcube_plugin
 				// Create Label
 				$label = $doc->createElement('p');
 				$label->setAttribute('id', 'exercise-selection');
-				$labelText = $doc->createTextNode("Exercise: " . $this->exercise);
+				$labelText = $doc->createTextNode("Exercise: " . $this->exercise_name);
 				$label->appendChild($labelText);
 
 				$targetDiv->appendChild($label);
@@ -345,10 +345,34 @@ class message_history extends rcube_plugin
 	{
 		rcube::console("message_history: log_sent_message");
 
-		//Add Exercise Selection to Headers
+		// Add Exercise Selection to Headers
 		if (isset($_POST['_exercise'])) {
-			$args['message']->headers(array('Exercise' => $_POST['_exercise']), true);
-			rcube::console("message_history: exercise in post variable: " . $_POST['_exercise']);
+			rcube::console("message_history: exercise id: " . $_POST['_exercise']);
+
+			$this->exercise_id = $_POST['_exercise'];
+			$url = $this->config['player_api_url'] . '/views/' . $this->exercise_id;
+			$headers = array(
+				'Cache-Control: no-cache, no-store',
+				'Pragma: no-cache',
+				'Accept: text/plain',
+				'Authorization: ' . $this->rc->decrypt($_SESSION['password'])
+			);
+			$curl = curl_init($url);
+			curl_setopt($curl, CURLOPT_FRESH_CONNECT, true);
+			curl_setopt($curl, CURLOPT_URL, $url);
+			curl_setopt($curl, CURLOPT_HTTPHEADER, $headers);
+			curl_setopt($curl, CURLOPT_RETURNTRANSFER, true);
+
+			$response = curl_exec($curl);
+			$decoded = json_decode($response, true);
+
+			curl_close($curl);
+
+			$this->exercise_name = $decoded['name'];
+			$args['message']->headers(array('Exercise' => $this->exercise_name, true));
+			$args['message']->headers(array('Exercise-ID' => $this->exercise_id, true));
+
+			rcube::console("message_history: exercise name: " . $this->exercise_name);
 		}
 		$db = rcmail::get_instance()->get_dbh();
 
@@ -357,9 +381,6 @@ class message_history extends rcube_plugin
 		$subject = $headers['Subject'];
 		$from_orig = $headers['From'];
 		$to_orig = $headers['To'];
-		if (isset($headers['Exercise'])) {
-			$this->exercise = $headers['Exercise'];
-		}
 		$time_sent = $headers['Date'];
 		preg_match('/<(.+?)@.+>/', $headers['Message-ID'], $matches_id);
 		$this->message_id = $matches_id[1];
@@ -407,7 +428,7 @@ class message_history extends rcube_plugin
 		foreach ($to_names as $to_name) {
 			$result = $db->query("INSERT INTO $table (from_user_name, to_user_name,
 				subject, time_sent, modified, read_status, roundcube_message_id, exercise) VALUES (?, ?, ?, ?, ?, ?, ?, ?)",
-				$from_name, $to_name, $subject, $time_sent, $db->now(), 'FALSE', $this->message_id, $this->exercise);
+				$from_name, $to_name, $subject, $time_sent, $db->now(), 'FALSE', $this->message_id, $this->exercise_name);
 		}
 
 		// if the message couldn't be inserted into the database table,
@@ -464,9 +485,36 @@ class message_history extends rcube_plugin
 		$raw_headers = $rcmail->storage->get_raw_headers($message->uid);
 		$headers = rcube_mime::parse_headers($raw_headers);
 		if (isset($headers['exercise'])) {
-			$this->exercise = $headers['exercise'];
-		}
+			$this->exercise_name = $headers['exercise'];
 
+			rcube::console("message_history: exercise name: " . $this->exercise_name);
+		} else if (isset($headers['exercise-id'])) {
+			$this->exercise_id = $headers['exercise-id'];
+			rcube::console("message_history: exercise-id: " . $this->exercise_id);
+
+			$url = $this->config['player_api_url'] . '/views/' . $this->exercise_id;
+			$headers = array(
+				'Cache-Control: no-cache, no-store',
+				'Pragma: no-cache',
+				'Accept: text/plain',
+				'Authorization: ' . $this->rc->decrypt($_SESSION['password'])
+			);
+			$curl = curl_init($url);
+			curl_setopt($curl, CURLOPT_FRESH_CONNECT, true);
+			curl_setopt($curl, CURLOPT_URL, $url);
+			curl_setopt($curl, CURLOPT_HTTPHEADER, $headers);
+			curl_setopt($curl, CURLOPT_RETURNTRANSFER, true);
+
+			$response = curl_exec($curl);
+			$decoded = json_decode($response, true);
+
+			curl_close($curl);
+
+			$this->exercise_name = $decoded['name'];
+
+			rcube::console("message_history: exercise name: " . $this->exercise_name);
+		}
+	
 		// Get Subject Value
 		$subject = $message->get_header('subject');
 		$parsed_subject = substr($subject, strpos($subject, "]") + 2);
@@ -499,7 +547,7 @@ class message_history extends rcube_plugin
 				$new_record = $db->query("INSERT INTO $table (from_user_name, to_user_name,
 					subject, time_sent, modified, read_status, roundcube_message_id, exercise) VALUES (?, ?, ?, ?, ?, ?, ?, ?)",
 					$from_name, $to_name, $parsed_subject, $timestamp, $db->now(), ($to_name === $this->user_name ? 'TRUE' : 'FALSE'),
-					$this->message_id, $this->exercise);
+					$this->message_id, $this->exercise_name);
 				if ($db->is_error($result)) {
 					rcube::raise_error([
 						'code' => 605, 'line' => __LINE__, 'file' => __FILE__,
@@ -563,16 +611,40 @@ class message_history extends rcube_plugin
 
 	// Function to build xapi context
 	private function build_context() {
+
+		rcube::console("message_history: build_context");
+
 		$context = new Context();
 		$platformContext = $context->withPlatform($_SERVER['SERVER_NAME']);
 		$languageContext = $platformContext->withLanguage('en-US');
+
 		// determine group email domain from config
 		$team_email = $this->team . "@" . $this->domain;
 		$members = array();
 		array_push($members, $this->actor);
 		$group = new Group(InverseFunctionalIdentifier::withMbox(IRI::fromString("mailto:$team_email")), $this->team, $members);
 		$groupContext = $languageContext->withTeam($group);
-		$this->context = $groupContext;
+
+		$activities = new ContextActivities();
+
+		// configure parent
+		if ($this->exercise_name) {
+			$type = IRI::fromString('http://adlnet.gov/expapi/activities/simulation');
+			$moreInfo = IRL::fromString($this->config['player_ui_url'] . '/view/' . $this->exercise_id);
+			$languageMap = new LanguageMap();
+			$mapName = $languageMap->withEntry('en-US', "View");
+			$mapDesc = $languageMap->withEntry('en-US', $this->exercise_name);
+			$definition = new Definition($mapName, $mapDesc, $type, $moreInfo);
+			$id = IRI::fromString($this->config['player_api_url'] . '/views/' . $this->exercise_id);
+			$parent = new Activity($id, $definition);
+			$activities = $activities->withAddedParentActivity($parent);
+
+			$finalContext = $groupContext->withContextActivities($activities);
+		} else {
+			$finalContext = $groupContext;
+		}
+
+		$this->context = $finalContext;
 	}
 
 	//Function to set xapi actor
@@ -612,17 +684,18 @@ class message_history extends rcube_plugin
 		$moreInfo = IRL::fromString('https://' . $_SERVER['SERVER_NAME'] . '?_task=message_history&_action=plugin.message_history&search=' . urlencode($this->user_name));
 		$mapName = $languageMap->withEntry('en-US', basename($path));
 		$mapDesc = $languageMap->withEntry('en-US', 'Email messaging system used during the exercise event');
-		$type = IRI::fromString('http://id.tincanapi.com/activitytype/resource');
+		$type = IRI::fromString($path);
+		$id = IRI::fromString('https://' . $_SERVER['SERVER_NAME']);
 
 		// configure for email
 		if ($this->message_id) {
 			$moreInfo = IRL::fromString('https://' . $_SERVER['SERVER_NAME'] . '?_task=message_history&_action=plugin.message_history&search=' . $this->message_id);
 			$mapName = $languageMap->withEntry('en-US', basename($path));
 			$mapDesc = $languageMap->withEntry('en-US', 'An email message sent or read during the exercise event');
-			$type = IRI::fromString('http://id.tincanapi.com/activitytype/email');
+			$type = IRI::fromString($path);
+			$id = IRI::fromString('https://' . $_SERVER['SERVER_NAME'] . '/message/' . $this->message_id);
 		}
 		$definition = new Definition($mapName, $mapDesc, $type, $moreInfo);
-		$id = IRI::fromString('https://' . $_SERVER['SERVER_NAME']);
 		$activity = new Activity($id, $definition);
 		$sf->withObject($activity);
 		return $sf;
@@ -638,6 +711,7 @@ class message_history extends rcube_plugin
 		}
 	}
 
+	// TODO see if this can fit into the original log_sent_message function
 	// Function to log xapi when a message is sent
 	public function xapilog_sent_message($args)
 	{
@@ -649,12 +723,11 @@ class message_history extends rcube_plugin
 		$subject = $headers['Subject'];
 		$from_orig = $headers['From'];
 		$to_orig = $headers['To'];
-		preg_match('/<(.+?)@.+>/', $headers['Message-ID'], $matches);
-		$this->message_id = $matches[1];
+		//preg_match('/<(.+?)@.+>/', $headers['Message-ID'], $matches);
+		//$this->message_id = $matches[1];
 
 		// get just the to emails
 		preg_match_all('/<(.+?)>/', $to_orig, $matches);
-		//$to_emails = implode(',', $matches);
 		$to_emails = $matches[1];
 
 		// get just the to names
@@ -720,11 +793,11 @@ class message_history extends rcube_plugin
 		$sf = new StatementFactory();
 
 		// Set actor
-		$sf = $this->set_actor($sf);
+		$this->set_actor($sf);
 
 		// Set verb
 		$verb_id = 'http://id.tincanapi.com/verb/previewed';
-		$sf = $this->set_verb($verb_id, $sf);
+		$this->set_verb($verb_id, $sf);
 
 		// Set object
 		$type = 'http://id.tincanapi.com/activitytype/resource';
@@ -734,7 +807,7 @@ class message_history extends rcube_plugin
 		$sf->withContext($this->context);
 
 		//$action = 'A user refreshed during the exercise event';
-		$sf = $this->set_object($type, $sf);
+		$this->set_object($type, $sf);
 		$statement = $sf->createStatement();
 
 		// Send statement
@@ -760,15 +833,15 @@ class message_history extends rcube_plugin
 		$sf = new StatementFactory();
 
 		// Set actor
-		$sf = $this->set_actor($sf);
+		$this->set_actor($sf);
 
 		// Set verb
 		$verb_id = 'https://w3id.org/xapi/adl/verbs/logged-in';
-		$sf = $this->set_verb($verb_id, $sf);
+		$this->set_verb($verb_id, $sf);
 
 		// Set object
 		$type = 'http://id.tincanapi.com/activitytype/resource';
-		$sf = $this->set_object($type, $sf);
+		$this->set_object($type, $sf);
 
 		// Set context
 		$this->build_context();
@@ -802,18 +875,18 @@ class message_history extends rcube_plugin
 		$sf = new StatementFactory();
 
 		// Set actor
-		$sf = $this->set_actor($sf);
+		$this->set_actor($sf);
 
 		// Set verb
 		$verb_id = 'https://w3id.org/xapi/adl/verbs/logged-in';
-		$sf = $this->set_verb($verb_id, $sf);
+		$this->set_verb($verb_id, $sf);
 
 		// Set object
 		$type = 'http://id.tincanapi.com/activitytype/resource';
 		//$moreInfo = IRL::fromString('https://' . $_SERVER['SERVER_NAME'] . "?_task=message_history&_action=plugin.message_history&search=$user");
 		//$id = IRI::fromString('https://' . $_SERVER['SERVER_NAME']);
 		//$action = 'A user logged in during the exercise event';
-		$sf = $this->set_object($type, $sf);
+		$this->set_object($type, $sf);
 
 		// Set context
 		$this->build_context();
@@ -842,11 +915,11 @@ class message_history extends rcube_plugin
 		$sf = new StatementFactory();
 
 		// Set actor
-		$sf = $this->set_actor($sf);
+		$this->set_actor($sf);
 
 		// Set verb
 		$verb_id = 'https://w3id.org/xapi/adl/verbs/logged-out';
-		$sf = $this->set_verb($verb_id, $sf);
+		$this->set_verb($verb_id, $sf);
 
 		// Set object
 		//$mapName = $languageMap->withEntry('en-US', 'Use');
@@ -855,7 +928,7 @@ class message_history extends rcube_plugin
 		//$moreInfo = IRL::fromString('https://' . $_SERVER['SERVER_NAME'] . "?_task=message_history&_action=plugin.message_history&search=$user");
 		//$id = IRI::fromString('https://' . $_SERVER['SERVER_NAME']);
 		//$action = 'A user logged in during the exercise event';
-		$sf = $this->set_object($type, $sf);
+		$this->set_object($type, $sf);
 
 		// Set context
 		$this->build_context();

@@ -16,6 +16,10 @@ $config['message_history'] = [
 	'group' => 'Observers',
 	// list of valid primary user teams
 	'teams' => [],
+	// Player API Url
+	'player_api_url' => 'http://localhost:4721/api',
+	// Player UI Url
+	'player_ui_url' => 'http://localhost:4722',
 	// URL for LRS
 	'lrs_endpoint' => 'http://example.com/xapi/statements',
 	// LRS username, credential ID, or API key
