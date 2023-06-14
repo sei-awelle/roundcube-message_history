@@ -168,7 +168,14 @@ class message_history extends rcube_plugin
 		// Get required information from the message_history_v2 database
 		//  table
 		$result = $db->query("SELECT from_user_name, to_user_name, subject, exercise, time_sent, read_status, roundcube_message_id FROM message_history_v2 ORDER BY time_sent DESC");
-		$records = $result->fetchAll();
+		if ($db->is_error($result)) {
+                        rcube::raise_error([
+                                'code' => 605, 'line' => __LINE__, 'file' => __FILE__,
+                                'message' => "message_history: failed to pull records from database."
+                                ], true, false);
+                } else {
+			$records = $result->fetchAll();
+		}
 
 		// Create a new html table with specifried id and class
 		$table = new html_table(['id' => 'message_history_v2', 'class' => 'message_history_table']);
