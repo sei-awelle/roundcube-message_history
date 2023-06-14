@@ -311,10 +311,12 @@ class message_history extends rcube_plugin
 			$select_element->setAttribute('id', 'compose-exercise');
 			$select_element->setAttribute('tabindex', '2');
 			$select_element->setAttribute('class', 'form-control');
-			foreach ($decoded as $view) {
-				$option_element = $doc->createElement('option', $view['name']);
-				$option_element->setAttribute('value', $view['id']);
-	   	 		$select_element->appendChild($option_element);
+			if (is_array($decoded)) {
+				foreach ($decoded as $view) {
+					$option_element = $doc->createElement('option', $view['name']);
+					$option_element->setAttribute('value', $view['id']);
+	   	 			$select_element->appendChild($option_element);
+				}
 			}
 
 			$child_div->appendChild($select_element);
