@@ -60,6 +60,13 @@ For the plugin to work, you will need update the ```roundcube/config/config.inc.
 
 ```$config['plugins'] = ['message_history'];```
 
+**3. Install All Dependencies**
+
+For the plugin to work, you will need to install all required dependencies.
+For this, run the following command:
+
+```composer install```
+
 ## Configuration
 
 To configure the plugin to your needs, the following configuration are available in the plugin's ```config.inc.php``` file. 
