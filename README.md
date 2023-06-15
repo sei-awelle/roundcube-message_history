@@ -56,9 +56,15 @@ mv roundcube-message_history-main message_history
 
 **2. Update Roundcube Config**
 
-For the plugin to work, you will need update the ```roundcube/config/config.inc.php``` with:
+For the plugin to work, you will need to update the ```roundcube/config/config.inc.php``` with:
 
 ```$config['plugins'] = ['message_history'];```
+
+Additionally, to obtain the user token to be used when requesting the views the user is a part of, you will need to update the following line on the ```roundcube/config/config.inc.php``` to match the scopes assigned on the OAuth server:
+
+```$config['oauth_scope'] = 'openid profile email auth-imap offline_access player_api';```
+
+Note: Make sure that the scopes added on your OAuth server match the scopes added on the ```roundcube/config/config.inc.php``` file, they don't necessary need to match the example provided above.
 
 **3. Install All Dependencies**
 
@@ -66,6 +72,31 @@ For the plugin to work, you will need to install all required dependencies.
 For this, run the following command:
 
 ```composer install```
+
+**4. Install Database**
+
+For the plugin to work, you will need to have a database table that will match the columns used on the Message History Table. For this, you can use the ```plugins\message_history\SQL\postgresql.sql``` file.
+
+To do this from your Roundcube pod, follow these steps:
+
+1. Install pgsql on your pod.
+
+```
+apt-get update
+apt-get install -y postgresql-client
+```
+
+2. Create the database table.
+```
+psql -h your-postgresql-host -U your-username -d your-database
+```
+Note: Replace *your-postgresql-host*, *your-username*, and *your-database* with the appropriate values for your PostgreSQL connection.
+
+3. Update the owner of the table with a user who has the required permissions to make changes.
+```
+ALTER TABLE your_table OWNER TO new_owner;
+```
+Note: Replace *your_table* with the name of the table for which you want to update the owner, and *new_owner* with the new owner.
 
 ## Configuration
 
