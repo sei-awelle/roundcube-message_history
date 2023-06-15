@@ -102,6 +102,10 @@ To change the group that is allowed to access the Mesage History Table, update t
 
 ```'group' => 'Allowed Group Name', ```
 
+In case a user is a member of multiple groups, we need to identify which group to log via xAPI. The following variable is a list of the "primary" group names that should be used in the case that a user is in both a primary team and a secondary team, for example, when the user is on the CMU team and the Observers team.
+
+```'teams' = ['CMU', 'SEI'],```
+
 **2. xAPI**
 
 To enable xAPI, some configuration settings are needed. These include:
