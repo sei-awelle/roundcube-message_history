@@ -88,15 +88,9 @@ apt-get install -y postgresql-client
 
 2. Create the database table.
 ```
-psql -h your-postgresql-host -U your-username -d your-database
+psql -U your_username -d your_database -h your_host -f postgresql.sql
 ```
-Note: Replace *your-postgresql-host*, *your-username*, and *your-database* with the appropriate values for your PostgreSQL connection.
-
-3. Update the owner of the table with a user who has the required permissions to make changes.
-```
-ALTER TABLE your_table OWNER TO new_owner;
-```
-Note: Replace *your_table* with the name of the table for which you want to update the owner, and *new_owner* with the new owner.
+Note: Replace *your_host*, *your_username*, and *your_database* with the appropriate values for your PostgreSQL connection.
 
 ## Configuration
 
