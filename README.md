@@ -56,41 +56,9 @@ mv roundcube-message_history-main message_history
 
 **2. Update Roundcube Config**
 
-For the plugin to work, you will need to update the ```roundcube/config/config.inc.php``` with:
+For the plugin to work, you will need update the ```roundcube/config/config.inc.php``` with:
 
 ```$config['plugins'] = ['message_history'];```
-
-Additionally, to obtain the user token to be used when requesting the views the user is a part of, you will need to update the following line on the ```roundcube/config/config.inc.php``` to match the scopes assigned on the OAuth server:
-
-```$config['oauth_scope'] = 'openid profile email auth-imap offline_access player_api';```
-
-Note: Make sure that the scopes added on your OAuth server match the scopes added on the ```roundcube/config/config.inc.php``` file, they don't necessary need to match the example provided above.
-
-**3. Install All Dependencies**
-
-For the plugin to work, you will need to install all required dependencies.
-For this, run the following command:
-
-```composer install```
-
-**4. Install Database**
-
-For the plugin to work, you will need to have a database table that will match the columns used on the Message History Table. For this, you can use the ```plugins\message_history\SQL\postgresql.sql``` file.
-
-To do this from your Roundcube pod, follow these steps:
-
-1. Install pgsql on your pod.
-
-```
-apt-get update
-apt-get install -y postgresql-client
-```
-
-2. Create the database table.
-```
-psql -U your_username -d your_database -h your_host -f postgresql.sql
-```
-Note: Replace *your_host*, *your_username*, and *your_database* with the appropriate values for your PostgreSQL connection.
 
 ## Configuration
 
@@ -101,10 +69,6 @@ To configure the plugin to your needs, the following configuration are available
 To change the group that is allowed to access the Mesage History Table, update the ```roundcube/plugins/message_history/config.inc.php``` with the desired group:
 
 ```'group' => 'Allowed Group Name', ```
-
-In case a user is a member of multiple groups, we need to identify which group to log via xAPI. The following variable is a list of the "primary" group names that should be used in the case that a user is in both a primary team and a secondary team, for example, when the user is on the CMU team and the Observers team.
-
-```'teams' = ['CMU', 'SEI'],```
 
 **2. xAPI**
 

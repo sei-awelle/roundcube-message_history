@@ -168,14 +168,7 @@ class message_history extends rcube_plugin
 		// Get required information from the message_history_v2 database
 		//  table
 		$result = $db->query("SELECT from_user_name, to_user_name, subject, exercise, time_sent, read_status, roundcube_message_id FROM message_history_v2 ORDER BY time_sent DESC");
-		if ($db->is_error($result)) {
-                        rcube::raise_error([
-                                'code' => 605, 'line' => __LINE__, 'file' => __FILE__,
-                                'message' => "message_history: failed to pull records from database."
-                                ], true, false);
-                } else {
-			$records = $result->fetchAll();
-		}
+		$records = $result->fetchAll();
 
 		// Create a new html table with specifried id and class
 		$table = new html_table(['id' => 'message_history_v2', 'class' => 'message_history_table']);
@@ -257,6 +250,8 @@ class message_history extends rcube_plugin
 
 	public function add_dropdown_to_compose($args)
 	{
+		$this->include_script('exercise_dropdown.js');
+
 		rcube::console("message_history: add_dropdown_to_compose");
 
 		// Information to make an api call to obtain the views the
@@ -282,51 +277,36 @@ class message_history extends rcube_plugin
 
 		// if the current template shown is the compose template, a
 		// dropdown will be added with the available user views
+			
 		if ($args['template'] == 'compose') {
-			$doc = new DOMDocument('1.0', RCUBE_CHARSET);
-			@$doc->loadHTML($args['content']);
-			$subject_div = $doc->getElementById('compose_subject');
+        		// Exercise Dropdown HTML Elements
+			$composeExerciseDiv = '<div id="compose_exercise" class="form-group row">' .
+                         	     	      '<label for="compose-exercise" class="col-2 col-form-label">Exercise' .
+                              		      '<span class="info-icon">&#9432;</span>' .
+					      '<span class="hover-text">Select View</span></label>' .
+                             	 	      '<div class="col-10">' .
+                              		      '<select name="_exercise" id="compose-exercise" tabindex="2" class="form-control">' .
+                              		      '<option value="none" selected disabled hidden>Select an Option</option>' .
+                              	  	      '<option value="no_exercise">No Exercise</option>';
 
-			//Create Parent div
-			$parent_div = $doc->createElement('div');
-			$parent_div->setAttribute('id', 'compose_exercise');
-			$parent_div->setAttribute('class', 'form-group row');
+        		// Add view options from $decoded array
+        		foreach ($decoded as $view) {
+            			$composeExerciseDiv .= '<option value="' . $view['id'] . '">' . $view['name'] . '</option>';
+        		}
 
-			//Create Label
-			$label = $doc->createElement('label');
-			$label->setAttribute('for', 'compose_exercise');
-			$label->setAttribute('class', 'col-2 col-form-label');
-			$labelText = $doc->createTextNode('Exercise');
-			$label->appendChild($labelText);
-			$parent_div->appendChild($label);
+        		// Close the select and parent div HTML
+        		$composeExerciseDiv .= '</select></div></div>';
 
-			//Add Child div
-			$child_div = $doc->createElement('div');
-			$child_div->setAttribute('class', 'col-10');
-			$parent_div->appendChild($child_div);
+        		// Find the position of the opening <div> tag of composebodycontainer
+       			$Position = strpos($args['content'], '<div id="composebodycontainer"');
 
-			//Add Dropdown
-			$select_element = $doc->createElement('select');
-			$select_element->setAttribute('name', '_exercise');
-			$select_element->setAttribute('id', 'compose-exercise');
-			$select_element->setAttribute('tabindex', '2');
-			$select_element->setAttribute('class', 'form-control');
-			if (is_array($decoded)) {
-				foreach ($decoded as $view) {
-					$option_element = $doc->createElement('option', $view['name']);
-					$option_element->setAttribute('value', $view['id']);
-	   	 			$select_element->appendChild($option_element);
-				}
-			}
-
-			$child_div->appendChild($select_element);
-			$subject_div->parentNode->insertBefore($parent_div, $subject_div->nextSibling);
-			$args['content'] = $doc->saveHTML();
-		}
+            		// Insert the compose_exercise div HTML right before the opening <div> tag of composebodycontainer
+           	 	$args['content'] = substr_replace($args['content'], $composeExerciseDiv, $Position, 0);
+    		}
 
 
 		if ($args['template'] == 'message') {
-			if ($this->exercise_name != NULL) {
+			if ($this->exercise_name != NULL || $this->exercise_name != "No Exercise") {
 				$doc = new DOMDocument('1.0', RCUBE_CHARSET);
 				@$doc->loadHTML($args['content']);
 				$xpath = new DOMXPath($doc);
@@ -359,30 +339,37 @@ class message_history extends rcube_plugin
 			rcube::console("message_history: exercise id: " . $_POST['_exercise']);
 
 			$this->exercise_id = $_POST['_exercise'];
-			$url = $this->config['player_api_url'] . '/views/' . $this->exercise_id;
-			$headers = array(
-				'Cache-Control: no-cache, no-store',
-				'Pragma: no-cache',
-				'Accept: text/plain',
-				'Authorization: ' . $this->rc->decrypt($_SESSION['password'])
-			);
-			$curl = curl_init($url);
-			curl_setopt($curl, CURLOPT_FRESH_CONNECT, true);
-			curl_setopt($curl, CURLOPT_URL, $url);
-			curl_setopt($curl, CURLOPT_HTTPHEADER, $headers);
-			curl_setopt($curl, CURLOPT_RETURNTRANSFER, true);
+			if ($this->exercise_id != 'no_exercise')
+			{
+				$url = $this->config['player_api_url'] . '/views/' . $this->exercise_id;
+				$headers = array(
+					'Cache-Control: no-cache, no-store',
+					'Pragma: no-cache',
+					'Accept: text/plain',
+					'Authorization: ' . $this->rc->decrypt($_SESSION['password'])
+				);
+				$curl = curl_init($url);
+				curl_setopt($curl, CURLOPT_FRESH_CONNECT, true);
+				curl_setopt($curl, CURLOPT_URL, $url);
+				curl_setopt($curl, CURLOPT_HTTPHEADER, $headers);
+				curl_setopt($curl, CURLOPT_RETURNTRANSFER, true);
 
-			$response = curl_exec($curl);
-			$decoded = json_decode($response, true);
+				$response = curl_exec($curl);
+				$decoded = json_decode($response, true);
 
-			curl_close($curl);
+				curl_close($curl);
 
-			$this->exercise_name = $decoded['name'];
-			$args['message']->headers(array('Exercise' => $this->exercise_name, true));
-			$args['message']->headers(array('Exercise-ID' => $this->exercise_id, true));
+				$this->exercise_name = $decoded['name'];
+				$args['message']->headers(array('Exercise' => $this->exercise_name, true));
+				$args['message']->headers(array('Exercise-ID' => $this->exercise_id, true));
+			
 
-			rcube::console("message_history: exercise name: " . $this->exercise_name);
+				rcube::console("message_history: exercise name: " . $this->exercise_name);
+			
+			}
+
 		}
+
 		$db = rcmail::get_instance()->get_dbh();
 
 		// Obtain the message information from the message headers
