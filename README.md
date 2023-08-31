@@ -87,6 +87,12 @@ To enable xAPI, some configuration settings are needed. These include:
 To make any desired changes, update the ```roundcube/plugins/message_history/config.inc.php``` with the desired configurations:
 
 ```
+    //Enable Debug Logging
+    'enable_debug_logging' => true,
+    //Enable xapi
+    'enable_xapi' => true,
+    //Enable Exercise Selection
+    'enable_exercise_name' => true,
     // URL for LRS
     'lrs_endpoint' => 'LRS URL',
     // LRS username, credential ID, or API key
@@ -98,6 +104,3 @@ To make any desired changes, update the ```roundcube/plugins/message_history/con
     // Identify users by username
     'actor_username' => 'false',
 ```
-
-
-
