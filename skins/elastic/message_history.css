@@ -96,7 +96,6 @@ table.message_history_table {
 }
 
 .info-icon {
-  display: inline-block;
   width: 16px;
   width: max-content;
   height: 16px;

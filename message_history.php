@@ -39,19 +39,21 @@ class message_history extends rcube_plugin
 	public function init()
 	{
 		$rcmail = rcmail::get_instance();
-		rcube::console("message_history: init task=" . $rcmail->task . " action=" . $rcmail->action);
+		$this->load_config();
 
+		if ($this->config['enable_debug_logging']) {
+			rcube::console("message_history: init task=" . $rcmail->task . " action=" . $rcmail->action);
+		
 
 		// Exit tasks and actions that do not require loggin or addition of button
-		if (($rcmail->action == 'getunread') || ($rcmail->action == 'list') || ($rcmail->action == 'pagenav') || ($rcmail->action == 'autocomplete')) {
-			rcube::console("message_history: exiting for action=" . $rcmail->action);
-			return;
+			if (($rcmail->action == 'getunread') || ($rcmail->action == 'list') || ($rcmail->action == 'pagenav') || ($rcmail->action == 'autocomplete')) {
+				rcube::console("message_history: exiting for action=" . $rcmail->action);
+				return;
+			}
 		}
-
 
 		$this->rc = &$rcmail;
 		$this->add_texts('localization/', true);
-		$this->load_config();
 		$this->rcube = rcube::get_instance();
 		$this->config = $this->rcube->config->get('message_history');
 		$this->domain = $this->rcube->config->get('username_domain');
@@ -83,9 +85,11 @@ class message_history extends rcube_plugin
 				],
 				'taskbar');
 			}
-			if ($rcmail->task == 'addressbook' || $rcmail->task == 'settings' || $rcmail->task == 'message_history') {
-				rcube::console("message_history: exiting for task=" . $rcmail->task);
-				return;
+			if ($this->config['enable_debug_logging']){
+				if ($rcmail->task == 'addressbook' || $rcmail->task == 'settings' || $rcmail->task == 'message_history') {
+					rcube::console("message_history: exiting for task=" . $rcmail->task);
+					return;
+				}
 			}
 		}
 
@@ -93,41 +97,46 @@ class message_history extends rcube_plugin
 
 
 
-		// Setup for xAPI information
-		$this->set_user();
+		if ($this->config['enable_xapi']) {
+			// Setup for xAPI information
+			$this->set_user();
 
-		// Set hooks for login
-		if ($rcmail->task == 'login') {
-			// Hook to log xapi when a user logins
-			$this->add_hook('login_after', [$this, 'log_login']);
-			return;
+			// Set hooks for login
+			if ($rcmail->task == 'login') {
+				// Hook to log xapi when a user logins
+				$this->add_hook('login_after', [$this, 'log_login']);
+				return;
+			}
+
+			// Set hook for logout
+			if ($rcmail->task == 'logout') {
+				// Hook to log xapi when user logs out
+				$this->add_hook('logout_after', [$this, 'log_logout']);
+			}
+
+			// Hook to log xapi when user tokken is refreshed
+			$this->add_hook('oauth_refresh_token', [$this, 'log_refresh']);
+
+			// Hook to log xapi when a user refreshes
+			//if (($rcmail->action == 'refresh') || ($rcmail->action == 'check-recent'))
+			if ($rcmail->action == 'check-recent') {
+				$this->add_hook('refresh', [$this, 'log_check']);
+				return;
+			}	
 		}
-
-		// Set hook for logout
-		if ($rcmail->task == 'logout') {
-			// Hook to log xapi when user logs out
-			$this->add_hook('logout_after', [$this, 'log_logout']);
-		}
-
-		// Hook to log xapi when user tokken is refreshed
-		$this->add_hook('oauth_refresh_token', [$this, 'log_refresh']);
-
-		// Hook to log xapi when a user refreshes
-		//if (($rcmail->action == 'refresh') || ($rcmail->action == 'check-recent')) {
-		if ($rcmail->action == 'check-recent') {
-			$this->add_hook('refresh', [$this, 'log_check']);
-			return;
-		}
-
-
+		
 		// Hooks for creating and viewing messages
 		if ($rcmail->action == 'compose') {
-			// Hook to add exercise selection dropdown to compose page
-			$this->add_hook('render_page', array($this, 'add_dropdown_to_compose'));
-			return;
+			if ($this->config['enable_exercise_name']) {
+				// Hook to add exercise selection dropdown to compose page
+				$this->add_hook('render_page', array($this, 'add_dropdown_to_compose'));
+				return;
+			}
 		} else if (($rcmail->action == 'preview') || ($rcmail->action == 'show')) {
 			// Hook to display exercise name when previewing and viewing message
-			$this->add_hook('render_page', array($this, 'add_exercise_to_display'));
+			if ($this->config['enable_exercise_name']) {
+				$this->add_hook('render_page', array($this, 'add_exercise_to_display'));
+			}	
 			$this->add_hook('message_load', array($this, 'message_load_handler'));
 			// Hook to mark message as read in database and to sent xapi
 			$this->add_hook('message_read', array($this, 'log_read_message'));
@@ -141,7 +150,9 @@ class message_history extends rcube_plugin
 			$this->add_hook('message_ready', array($this, 'log_sent_message'));
 
 			// Hook to log xapi when a message is sent
-			$this->add_hook('message_sent', [$this, 'xapilog_sent_message']);
+			if ($this->config['enable_xapi']) {
+				$this->add_hook('message_sent', [$this, 'xapilog_sent_message']);
+			}
 		}
 	}
 
@@ -212,8 +223,12 @@ class message_history extends rcube_plugin
 	// with the views the user is part of
 	public function message_load_handler($args)
 	{
-		rcube::console("message_history: message_load_handler");
+		$this->load_config();
+		if ($this->config['enable_debug_logging']) {
+			rcube::console("message_history: message_load_handler");
 
+		}
+		
 		$message = $args['object'];
 		$rcmail = rcmail::get_instance();
 		$raw_headers = $rcmail->storage->get_raw_headers($message->uid);
@@ -227,7 +242,10 @@ class message_history extends rcube_plugin
 	// Function to dispaly exercise header on message previer page
 	public function add_exercise_to_display($args)
 	{
-		rcube::console("message_history: add_exercise_to_display");
+		$this->load_config();
+		if ($this->config['enable_debug_logging']) {
+			rcube::console("message_history: add_exercise_to_display");
+		}
 
 		if (($args['template'] == 'message') && ($this->exercise_name != NULL)) {
 			$doc = new DOMDocument();
@@ -251,8 +269,11 @@ class message_history extends rcube_plugin
 	public function add_dropdown_to_compose($args)
 	{
 		$this->include_script('exercise_dropdown.js');
+		$this->load_config();
 
-		rcube::console("message_history: add_dropdown_to_compose");
+		if ($this->config['enable_debug_logging']) {
+			rcube::console("message_history: add_dropdown_to_compose");
+		}
 
 		// Information to make an api call to obtain the views the
 		// current user is part of
@@ -332,11 +353,17 @@ class message_history extends rcube_plugin
 	// message record if it was sent through Roundcube
 	public function log_sent_message($args)
 	{
-		rcube::console("message_history: log_sent_message");
+		$this->load_config();
+		if ($this->config['enable_debug_logging'])
+		{
+			rcube::console("message_history: log_sent_message");
+		}
 
 		// Add Exercise Selection to Headers
 		if (isset($_POST['_exercise'])) {
-			rcube::console("message_history: exercise id: " . $_POST['_exercise']);
+			if ($this->config['enable_debug_logging']) {
+				rcube::console("message_history: exercise id: " . $_POST['_exercise']);
+			}
 
 			$this->exercise_id = $_POST['_exercise'];
 			if ($this->exercise_id != 'no_exercise')
@@ -364,8 +391,9 @@ class message_history extends rcube_plugin
 				$args['message']->headers(array('Exercise-ID' => $this->exercise_id, true));
 			
 
-				rcube::console("message_history: exercise name: " . $this->exercise_name);
-			
+				if ($this->config['enable_debug_logging']) {
+					rcube::console("message_history: exercise name: " . $this->exercise_name);
+				}
 			}
 
 		}
@@ -394,7 +422,7 @@ class message_history extends rcube_plugin
 
 		// convert from name to email address
 		$result = $db->query("SELECT name FROM contacts WHERE email = '$from_orig'");
-		if ($db->is_error($result)) {
+		if ($this->config['enable_debug_logging'] && $db->is_error($result)) {
 			rcube::raise_error([
 				'code' => 605, 'line' => __LINE__, 'file' => __FILE__,
 				'message' => "message_history: failed to pull name from database."
@@ -409,7 +437,7 @@ class message_history extends rcube_plugin
 		$to_names = array();
 		foreach ($to_emails as $to_email) {
 			$result = $db->query("SELECT name FROM contacts WHERE email = '$to_email'");
-   			if ($db->is_error($result)) {
+   			if ($this->config['enable_debug_logging'] && $db->is_error($result)) {
 				rcube::raise_error([
 					'code' => 605, 'line' => __LINE__, 'file' => __FILE__,
 					'message' => "message_history: failed to pull name from database."
@@ -429,7 +457,7 @@ class message_history extends rcube_plugin
 
 		// if the message couldn't be inserted into the database table,
 		// error out
-		if ($db->is_error($result)) {
+		if ($this->config['enable_debug_logging'] && $db->is_error($result)) {
 			rcube::raise_error([
 				'code' => 605, 'line' => __LINE__, 'file' => __FILE__,
 				'message' => "message_history_v2: failed to insert record into database."
@@ -442,7 +470,10 @@ class message_history extends rcube_plugin
 	// Stackstorm and to mark a message as read
 	public function log_read_message($args)
 	{
-		rcube::console("message_history: log_read_message");
+		$this->load_config();
+		if ($this->config['enable_debug_logging']) {
+			rcube::console("message_history: log_read_message");
+		}
 
 		$db = rcmail::get_instance()->get_dbh();
 		$rcmail = rcmail::get_instance();
@@ -463,7 +494,7 @@ class message_history extends rcube_plugin
 		$from_email = $message->get_header('from');
 		$from_name = $from_email;
 		$result = $db->query("SELECT name FROM contacts WHERE email = '$from_email'");
-		if ($db->is_error($result)) {
+		if ($this->config['enable_debug_logging'] && $db->is_error($result)) {
 			rcube::raise_error([
 				'code' => 605, 'line' => __LINE__, 'file' => __FILE__,
 				'message' => "message_history: failed to pull name from database."
@@ -471,23 +502,27 @@ class message_history extends rcube_plugin
 		}
 		$records = $db->fetch_assoc($result);
 		// verify one record
-		if (!$records || (count($records) != 1)) {
+		if (!$records || (count($records) != 1) && $this->config['enable_debug_logging']) {
 			rcube::console("message_history: cannot find single record for " . $from_email);
 		} else {
 			$from_name = $records['name'];
 		}
-
-		// Get Execise name from header
-		$raw_headers = $rcmail->storage->get_raw_headers($message->uid);
-		$headers = rcube_mime::parse_headers($raw_headers);
-		if (isset($headers['exercise'])) {
-			$this->exercise_name = $headers['exercise'];
-
-			rcube::console("message_history: exercise name: " . $this->exercise_name);
-		} else if (isset($headers['exercise-id'])) {
-			$this->exercise_id = $headers['exercise-id'];
-			rcube::console("message_history: exercise-id: " . $this->exercise_id);
-
+		
+		if ($this->config['enable_exercise_name']) {
+			// Get Execise name from header
+			$raw_headers = $rcmail->storage->get_raw_headers($message->uid);
+			$headers = rcube_mime::parse_headers($raw_headers);
+			if (isset($headers['exercise'])) {
+				$this->exercise_name = $headers['exercise'];
+				if ($this->config['enable_debug_logging']) {
+					rcube::console("message_history: exercise name: " . $this->exercise_name);
+				}
+			} else if (isset($headers['exercise-id'])) {
+				$this->exercise_id = $headers['exercise-id'];
+				if ($this->config['enable_debug_logging']) {
+					rcube::console("message_history: exercise-id: " . $this->exercise_id);
+				}
+			}
 			$url = $this->config['player_api_url'] . '/views/' . $this->exercise_id;
 			$headers = array(
 				'Cache-Control: no-cache, no-store',
@@ -508,7 +543,10 @@ class message_history extends rcube_plugin
 
 			$this->exercise_name = $decoded['name'];
 
-			rcube::console("message_history: exercise name: " . $this->exercise_name);
+			if ($this->config['enable_debug_logging']) {
+				rcube::console("message_history: exercise name: " . $this->exercise_name);
+			
+			}
 		}
 	
 		// Get Subject Value
@@ -527,7 +565,7 @@ class message_history extends rcube_plugin
 			// first check if the email record exists (if it was
 			// sent through Roundcube)
 			$result = $db->query("SELECT * FROM $table WHERE roundcube_message_id = '" . $this->message_id . "' AND to_user_name = '$to_name'");
-			if ($db->is_error($result)) {
+			if ($this->config['enable_debug_logging'] && $db->is_error($result)) {
 				rcube::raise_error([
 					'code' => 605, 'line' => __LINE__, 'file' => __FILE__,
 					'message' => "message_history: failed to pull existing record from database."
@@ -536,15 +574,17 @@ class message_history extends rcube_plugin
 			$records = $db->fetch_assoc($result);
 			// if the record doesn't exist, insert the new record
 			// into the database table
-			if ($result->rowCount() > 1) {
+			if ($this->config['enable_debug_logging'] && $result->rowCount() > 1) {
 				rcube::console("message_history: multiple records exist for message from $from_name to $to_name with message_id" . $this->message_id);
 			} else if ($result->rowCount() == 0) {
-				rcube::console("message_history: inserting new record");
+				if ($this->config['enable_debug_logging']) {
+					rcube::console("message_history: inserting new record");
+				}
 				$new_record = $db->query("INSERT INTO $table (from_user_name, to_user_name,
 					subject, time_sent, modified, read_status, roundcube_message_id, exercise) VALUES (?, ?, ?, ?, ?, ?, ?, ?)",
 					$from_name, $to_name, $parsed_subject, $timestamp, $db->now(), ($to_name === $this->user_name ? 'TRUE' : 'FALSE'),
 					$this->message_id, $this->exercise_name);
-				if ($db->is_error($result)) {
+				if ($this->config['enable_debug_logging'] && $db->is_error($result)) {
 					rcube::raise_error([
 						'code' => 605, 'line' => __LINE__, 'file' => __FILE__,
 						'message' => "message_history: failed to insert record."
@@ -552,10 +592,12 @@ class message_history extends rcube_plugin
 				}
 			} else if (($to_name === $this->user_name) && ($records['read_status'] == FALSE)) {
 				// check if the current recipient matches the logged in user
-				rcube::console("message_history: updating record");
+				if ($this->config['enable_debug_logging']) {
+					rcube::console("message_history: updating record");
+				}
 				// update is_read column to 1 for this message
 				$result = $db->query("UPDATE $table SET read_status = TRUE WHERE roundcube_message_id = '" . $this->message_id . "' AND to_user_name = '$to_name'");
-				if ($db->is_error($result)) {
+				if ($this->config['enable_debug_logging'] && $db->is_error($result)) {
 					rcube::raise_error([
 						'code' => 605, 'line' => __LINE__, 'file' => __FILE__,
 						'message' => "message_history: failed to mark message as read."
@@ -564,34 +606,37 @@ class message_history extends rcube_plugin
 			}
 
 		}
+		
+		$this->load_config();
+		if ($this->config['enable_xapi']) {
+			// build xapi client
+			$this->build_client();
+			$statementsApiClient = $this->xApiClient->getStatementsApiClient();
+			$sf = new StatementFactory();
 
-		// build xapi client
-		$this->build_client();
-		$statementsApiClient = $this->xApiClient->getStatementsApiClient();
-		$sf = new StatementFactory();
+			// set actor
+			$this->set_actor($sf);
+	
+			// set verb
+			$verb_id = 'https://w3id.org/xapi/dod-isd/verbs/read';
+			$this->set_verb($verb_id, $sf);
 
-		// set actor
-		$this->set_actor($sf);
+			// set object
+			$type = 'http://id.tincanapi.com/activitytype/email';
+			$this->set_object($type, $sf);
 
-		// set verb
-		$verb_id = 'https://w3id.org/xapi/dod-isd/verbs/read';
-		$this->set_verb($verb_id, $sf);
+			// with context
+			$this->build_context();
+			$sf->withContext($this->context);
 
-		// set object
-		$type = 'http://id.tincanapi.com/activitytype/email';
-		$this->set_object($type, $sf);
+			// create and store statement
+			$statement = $sf->createStatement();
 
-		// with context
-		$this->build_context();
-		$sf->withContext($this->context);
+			// Send statement
+			$this->send_statement($statement, $statementsApiClient);
 
-		// create and store statement
-		$statement = $sf->createStatement();
-
-		// Send statement
-		$this->send_statement($statement, $statementsApiClient);
-
-		return $args;
+			return $args;
+		}
 	}
 
 	// Function to build xapi client
@@ -608,7 +653,10 @@ class message_history extends rcube_plugin
 	// Function to build xapi context
 	private function build_context() {
 
-		rcube::console("message_history: build_context");
+		$this->load_config();
+		if ($this->config['enable_debug_logging']) {
+			rcube::console("message_history: build_context");
+		}
 
 		$context = new Context();
 		$platformContext = $context->withPlatform($_SERVER['SERVER_NAME']);
@@ -646,7 +694,10 @@ class message_history extends rcube_plugin
 	//Function to set xapi actor
 	private function set_actor($sf)
 	{
-		rcube::console("message_history: set_actor");
+		$this->load_config();
+		if ($this->config['enable_debug_logging']) {
+			rcube::console("message_history: set_actor");
+		}
 
 		$mbox = IRI::fromString("mailto:" . $this->user_email);
 		$account = new Account($this->sub, IRL::fromString($this->iss));
@@ -660,7 +711,10 @@ class message_history extends rcube_plugin
 	// Function to set xapi verb
 	private function set_verb($path, $sf)
 	{
-		rcube::console("message_historyu: set_verb");
+		$this->load_config();
+		if ($this->config['enable_debug_logging']) {
+			rcube::console("message_historyu: set_verb");
+		}
 
 		$languageMap = new LanguageMap();
 		$map = $languageMap->withEntry("en-US", basename($path));
@@ -672,7 +726,10 @@ class message_history extends rcube_plugin
 	// Function to set xapi object
 	private function set_object($path, $sf)
 	{
-		rcube::console("message_history: set_object");
+		$this->load_config();
+		if ($this->config['enable_debug_logging']) {
+			rcube::console("message_history: set_object");
+		}
 
 		$languageMap = new LanguageMap();
 
@@ -711,7 +768,10 @@ class message_history extends rcube_plugin
 	// Function to log xapi when a message is sent
 	public function xapilog_sent_message($args)
 	{
-		rcube::console("message_history: xapilog_sent_message");
+		$this->load_config();
+		if ($this->config['enable_debug_logging']) {
+			rcube::console("message_history: xapilog_sent_message");
+		}
 
 		$db = rcmail::get_instance()->get_dbh();
 
@@ -735,7 +795,7 @@ class message_history extends rcube_plugin
 		$to_names = array();
 		foreach ($to_emails as $to_email) {
 			$result = $db->query("SELECT name FROM contacts WHERE email = '$to_email'");
-			if ($db->is_error($result)) {
+			if ($this->config['enable_debug_logging'] && $db->is_error($result)) {
 				rcube::raise_error([
 					'code' => 605, 'line' => __LINE__,
 					'file' => __FILE__,
@@ -779,8 +839,10 @@ class message_history extends rcube_plugin
 	// Function to log xapi when a user refreshes
 	public function log_check($args)
 	{
-		rcube::console("message_history: log_check");
-
+		$this->load_config();
+		if ($this->config['enable_debug_logging']) {
+			rcube::console("message_history: log_check");
+		}
 		// Build xapi client
 		$this->build_client();
 		$statementsApiClient = $this->xApiClient->getStatementsApiClient();
@@ -815,8 +877,10 @@ class message_history extends rcube_plugin
 	// Function to log xapi when a user login gets checked
 	public function log_refresh($args)
 	{
-		rcube::console("message_history: log_refresh");
-
+		$this->load_config();
+		if ($this->config['enable_debug_logging']) {
+			rcube::console("message_history: log_refresh");
+		}
 		if ($this->user_email == NULL) {
 			$this->set_user();
 		}
@@ -857,8 +921,10 @@ class message_history extends rcube_plugin
 	// Function to log xapi when a user logins
 	public function log_login($args)
 	{
-		rcube::console("message_history: log_login");
-
+		$this->load_config();
+		if ($this->config['enable_debug_logging']) {
+			rcube::console("message_history: log_login");
+		}
 		if ($this->user_email == NULL) {
 			$this->set_user();
 		}
@@ -901,8 +967,10 @@ class message_history extends rcube_plugin
 	// Function to log xapi when a user logs out
 	public function log_logout($args)
 	{
-		rcube::console("message_history: log_logout");
-
+		$this->load_config();
+		if ($this->config['enable_debug_logging']) {
+			rcube::console("message_history: log_logout");
+		}
 		// Build xapi client
 		$this->build_client();
 		$statementsApiClient = $this->xApiClient->getStatementsApiClient();
@@ -941,18 +1009,23 @@ class message_history extends rcube_plugin
 
 	private function xapi_error(Exception $e)
 	{
-		$m = $e->getMessage();
-		rcube::raise_error([
-			'line' => __LINE__,
-			'file' => __FILE__,
-			'message' => "xapi: $m"
-			], true, false);
-	}
+		$this->load_config();
+		if ($this->config['enable_debug_logging']) {
+			$m = $e->getMessage();
+			rcube::raise_error([
+				'line' => __LINE__,
+				'file' => __FILE__,
+				'message' => "xapi: $m"
+				], true, false);
+		}
+	}	
 
 	private function set_user()
 	{
-		rcube::console("message_history: set_user");
-
+		$this->load_config();
+		if ($this->config['enable_debug_logging']) {
+			rcube::console("message_history: set_user");
+		}
 		$rcmail = rcmail::get_instance();
 
 		$this->user_email = $rcmail->user->get_username();
@@ -960,7 +1033,7 @@ class message_history extends rcube_plugin
 
 		// convert from name to email address
 		$result = $db->query("SELECT name FROM contacts WHERE email = '" . $this->user_email . "'");
-		if ($db->is_error($result)) {
+		if ($this->config['enable_debug_logging'] && $db->is_error($result)) {
 			rcube::raise_error([
 				'code' => 605, 'line' => __LINE__, 'file' => __FILE__,
 				'message' => "message_history: failed to pull name from database."
@@ -968,7 +1041,7 @@ class message_history extends rcube_plugin
 		}
 		$records = $db->fetch_assoc($result);
 		// verify one entry
-		if (!$records || (count($records) != 1)) {
+		if (!$records || (count($records) != 1) && $this->config['enable_debug_logging']) {
 			rcube::console("message_history: cannot find single record for " . $this->user_email);
 			return;
 		} else {
@@ -986,18 +1059,21 @@ class message_history extends rcube_plugin
 				break;
 			}
 		}
-
-		if (!isset($_SESSION['oauth_token']['access_token'])) {
-			rcube::console("message_history: no token set for for " . $this->user_email);
-			return;
+		
+		if ($this->config['enable_debug_logging']) {
+			if (!isset($_SESSION['oauth_token']['access_token'])) {
+				rcube::console("message_history: no token set for for " . $this->user_email);
+				return;
+			}
 		}
-
 		// get sub and issuer for oauth
 		$token = $_SESSION['oauth_token']['access_token'];
 		$decoded = json_decode(base64_decode(str_replace('_', '/', str_replace('-', '+', explode('.', $token)[1]))));
 		$this->sub = $decoded->sub;
 		$this->iss = $decoded->iss;
-		rcube::console("sub: " . $this->sub . ' iss: ' . $this->iss);
-	}
+		if ($this->config['enable_debug_logging']) {
+			rcube::console("sub: " . $this->sub . ' iss: ' . $this->iss);
+		}
+	}	
 }
 ?>
