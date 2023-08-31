@@ -60,6 +60,10 @@ For the plugin to work, you will need update the ```roundcube/config/config.inc.
 
 ```$config['plugins'] = ['message_history'];```
 
+**3. Run Composer**
+
+```composer install```
+
 ## Configuration
 
 To configure the plugin to your needs, the following configuration are available in the plugin's ```config.inc.php``` file. 
