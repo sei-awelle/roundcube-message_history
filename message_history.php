@@ -40,22 +40,23 @@ class message_history extends rcube_plugin
 	{
 		$rcmail = rcmail::get_instance();
 		$this->load_config();
-
-		if ($this->config['enable_debug_logging']) {
-			rcube::console("message_history: init task=" . $rcmail->task . " action=" . $rcmail->action);
-		
-
-		// Exit tasks and actions that do not require loggin or addition of button
-			if (($rcmail->action == 'getunread') || ($rcmail->action == 'list') || ($rcmail->action == 'pagenav') || ($rcmail->action == 'autocomplete')) {
-				rcube::console("message_history: exiting for action=" . $rcmail->action);
-				return;
-			}
-		}
-
 		$this->rc = &$rcmail;
 		$this->add_texts('localization/', true);
 		$this->rcube = rcube::get_instance();
 		$this->config = $this->rcube->config->get('message_history');
+
+		if ($this->config['enable_debug_logging']) {
+			rcube::console("message_history: init task=" . $rcmail->task . " action=" . $rcmail->action);
+		}
+
+		// Exit tasks and actions that do not require loggin or addition of button
+		if (($rcmail->action == 'getunread') || ($rcmail->action == 'list') || ($rcmail->action == 'pagenav') || ($rcmail->action == 'autocomplete')) {
+			if ($this->config['enable_debug_logging']) {
+				rcube::console("message_history: exiting for action=" . $rcmail->action);
+			}
+			return;
+		}
+
 		$this->domain = $this->rcube->config->get('username_domain');
 		$db = rcmail::get_instance()->get_dbh();
 
@@ -63,7 +64,7 @@ class message_history extends rcube_plugin
 
 		if (($rcmail->task != 'logout') && ($rcmail->task != 'login')) {
 			// Setup for adding button
-			$result = $db->query("SELECT email FROM contacts INNER JOIN contactgroupmembers ON contacts.contact_id = contactgroupmembers.contact_id INNER JOIN contactgroups ON contactgroups.contactgroup_id = contactgroupmembers.contactgroup_id AND contactgroups.name = '" . $this->config['group'] . "' WHERE email = '" . $this->user_email . "'");
+			$result = $db->query("SELECT email FROM contacts INNER JOIN contactgroupmembers ON contacts.contact_id = contactgroupmembers.contact_id INNER JOIN contactgroups ON contactgroups.contactgroup_id = contactgroupmembers.contactgroup_id AND contactgroups.name = '" . $this->config['group'] . "' WHERE email ILIKE '" . $this->user_email . "'");
 
 			// if user has the required permissions, the user will be able
 			// to view the message history table
@@ -85,11 +86,11 @@ class message_history extends rcube_plugin
 				],
 				'taskbar');
 			}
-			if ($this->config['enable_debug_logging']){
-				if ($rcmail->task == 'addressbook' || $rcmail->task == 'settings' || $rcmail->task == 'message_history') {
+			if ($rcmail->task == 'addressbook' || $rcmail->task == 'settings' || $rcmail->task == 'message_history') {
+				if ($this->config['enable_debug_logging']) {
 					rcube::console("message_history: exiting for task=" . $rcmail->task);
-					return;
 				}
+				return;
 			}
 		}
 
@@ -122,9 +123,9 @@ class message_history extends rcube_plugin
 			if ($rcmail->action == 'check-recent') {
 				$this->add_hook('refresh', [$this, 'log_check']);
 				return;
-			}	
+			}
 		}
-		
+
 		// Hooks for creating and viewing messages
 		if ($rcmail->action == 'compose') {
 			if ($this->config['enable_exercise_name']) {
@@ -136,7 +137,7 @@ class message_history extends rcube_plugin
 			// Hook to display exercise name when previewing and viewing message
 			if ($this->config['enable_exercise_name']) {
 				$this->add_hook('render_page', array($this, 'add_exercise_to_display'));
-			}	
+			}
 			$this->add_hook('message_load', array($this, 'message_load_handler'));
 			// Hook to mark message as read in database and to sent xapi
 			$this->add_hook('message_read', array($this, 'log_read_message'));
@@ -226,9 +227,8 @@ class message_history extends rcube_plugin
 		$this->load_config();
 		if ($this->config['enable_debug_logging']) {
 			rcube::console("message_history: message_load_handler");
-
 		}
-		
+
 		$message = $args['object'];
 		$rcmail = rcmail::get_instance();
 		$raw_headers = $rcmail->storage->get_raw_headers($message->uid);
@@ -298,7 +298,7 @@ class message_history extends rcube_plugin
 
 		// if the current template shown is the compose template, a
 		// dropdown will be added with the available user views
-			
+
 		if ($args['template'] == 'compose') {
         		// Exercise Dropdown HTML Elements
 			$composeExerciseDiv = '<div id="compose_exercise" class="form-group row">' .
@@ -354,8 +354,7 @@ class message_history extends rcube_plugin
 	public function log_sent_message($args)
 	{
 		$this->load_config();
-		if ($this->config['enable_debug_logging'])
-		{
+		if ($this->config['enable_debug_logging']) {
 			rcube::console("message_history: log_sent_message");
 		}
 
@@ -389,7 +388,7 @@ class message_history extends rcube_plugin
 				$this->exercise_name = $decoded['name'];
 				$args['message']->headers(array('Exercise' => $this->exercise_name, true));
 				$args['message']->headers(array('Exercise-ID' => $this->exercise_id, true));
-			
+
 
 				if ($this->config['enable_debug_logging']) {
 					rcube::console("message_history: exercise name: " . $this->exercise_name);
@@ -421,8 +420,8 @@ class message_history extends rcube_plugin
 
 
 		// convert from name to email address
-		$result = $db->query("SELECT name FROM contacts WHERE email = '$from_orig'");
-		if ($this->config['enable_debug_logging'] && $db->is_error($result)) {
+		$result = $db->query("SELECT name FROM contacts WHERE email ILIKE '$from_orig'");
+		if ($db->is_error($result)) {
 			rcube::raise_error([
 				'code' => 605, 'line' => __LINE__, 'file' => __FILE__,
 				'message' => "message_history: failed to pull name from database."
@@ -436,8 +435,8 @@ class message_history extends rcube_plugin
 		// convert to email addresses to names
 		$to_names = array();
 		foreach ($to_emails as $to_email) {
-			$result = $db->query("SELECT name FROM contacts WHERE email = '$to_email'");
-   			if ($this->config['enable_debug_logging'] && $db->is_error($result)) {
+			$result = $db->query("SELECT name FROM contacts WHERE email ILIKE '$to_email'");
+   			if ($db->is_error($result)) {
 				rcube::raise_error([
 					'code' => 605, 'line' => __LINE__, 'file' => __FILE__,
 					'message' => "message_history: failed to pull name from database."
@@ -457,7 +456,7 @@ class message_history extends rcube_plugin
 
 		// if the message couldn't be inserted into the database table,
 		// error out
-		if ($this->config['enable_debug_logging'] && $db->is_error($result)) {
+		if ($db->is_error($result)) {
 			rcube::raise_error([
 				'code' => 605, 'line' => __LINE__, 'file' => __FILE__,
 				'message' => "message_history_v2: failed to insert record into database."
@@ -493,8 +492,8 @@ class message_history extends rcube_plugin
 		// Get From User name
 		$from_email = $message->get_header('from');
 		$from_name = $from_email;
-		$result = $db->query("SELECT name FROM contacts WHERE email = '$from_email'");
-		if ($this->config['enable_debug_logging'] && $db->is_error($result)) {
+		$result = $db->query("SELECT name FROM contacts WHERE email ILIKE '$from_email'");
+		if ($db->is_error($result)) {
 			rcube::raise_error([
 				'code' => 605, 'line' => __LINE__, 'file' => __FILE__,
 				'message' => "message_history: failed to pull name from database."
@@ -502,12 +501,13 @@ class message_history extends rcube_plugin
 		}
 		$records = $db->fetch_assoc($result);
 		// verify one record
-		if (!$records || (count($records) != 1) && $this->config['enable_debug_logging']) {
+		if (!$records || (count($records) != 1)) {
 			rcube::console("message_history: cannot find single record for " . $from_email);
+			return;
 		} else {
 			$from_name = $records['name'];
 		}
-		
+
 		if ($this->config['enable_exercise_name']) {
 			// Get Execise name from header
 			$raw_headers = $rcmail->storage->get_raw_headers($message->uid);
@@ -545,10 +545,9 @@ class message_history extends rcube_plugin
 
 			if ($this->config['enable_debug_logging']) {
 				rcube::console("message_history: exercise name: " . $this->exercise_name);
-			
 			}
 		}
-	
+
 		// Get Subject Value
 		$subject = $message->get_header('subject');
 		$parsed_subject = substr($subject, strpos($subject, "]") + 2);
@@ -565,7 +564,7 @@ class message_history extends rcube_plugin
 			// first check if the email record exists (if it was
 			// sent through Roundcube)
 			$result = $db->query("SELECT * FROM $table WHERE roundcube_message_id = '" . $this->message_id . "' AND to_user_name = '$to_name'");
-			if ($this->config['enable_debug_logging'] && $db->is_error($result)) {
+			if ($db->is_error($result)) {
 				rcube::raise_error([
 					'code' => 605, 'line' => __LINE__, 'file' => __FILE__,
 					'message' => "message_history: failed to pull existing record from database."
@@ -574,7 +573,7 @@ class message_history extends rcube_plugin
 			$records = $db->fetch_assoc($result);
 			// if the record doesn't exist, insert the new record
 			// into the database table
-			if ($this->config['enable_debug_logging'] && $result->rowCount() > 1) {
+			if ($result->rowCount() > 1) {
 				rcube::console("message_history: multiple records exist for message from $from_name to $to_name with message_id" . $this->message_id);
 			} else if ($result->rowCount() == 0) {
 				if ($this->config['enable_debug_logging']) {
@@ -584,7 +583,7 @@ class message_history extends rcube_plugin
 					subject, time_sent, modified, read_status, roundcube_message_id, exercise) VALUES (?, ?, ?, ?, ?, ?, ?, ?)",
 					$from_name, $to_name, $parsed_subject, $timestamp, $db->now(), ($to_name === $this->user_name ? 'TRUE' : 'FALSE'),
 					$this->message_id, $this->exercise_name);
-				if ($this->config['enable_debug_logging'] && $db->is_error($result)) {
+				if ($db->is_error($result)) {
 					rcube::raise_error([
 						'code' => 605, 'line' => __LINE__, 'file' => __FILE__,
 						'message' => "message_history: failed to insert record."
@@ -597,7 +596,7 @@ class message_history extends rcube_plugin
 				}
 				// update is_read column to 1 for this message
 				$result = $db->query("UPDATE $table SET read_status = TRUE WHERE roundcube_message_id = '" . $this->message_id . "' AND to_user_name = '$to_name'");
-				if ($this->config['enable_debug_logging'] && $db->is_error($result)) {
+				if ($db->is_error($result)) {
 					rcube::raise_error([
 						'code' => 605, 'line' => __LINE__, 'file' => __FILE__,
 						'message' => "message_history: failed to mark message as read."
@@ -606,7 +605,7 @@ class message_history extends rcube_plugin
 			}
 
 		}
-		
+
 		$this->load_config();
 		if ($this->config['enable_xapi']) {
 			// build xapi client
@@ -616,7 +615,7 @@ class message_history extends rcube_plugin
 
 			// set actor
 			$this->set_actor($sf);
-	
+
 			// set verb
 			$verb_id = 'https://w3id.org/xapi/dod-isd/verbs/read';
 			$this->set_verb($verb_id, $sf);
@@ -794,8 +793,8 @@ class message_history extends rcube_plugin
 		// convert to email addresses to names
 		$to_names = array();
 		foreach ($to_emails as $to_email) {
-			$result = $db->query("SELECT name FROM contacts WHERE email = '$to_email'");
-			if ($this->config['enable_debug_logging'] && $db->is_error($result)) {
+			$result = $db->query("SELECT name FROM contacts WHERE email ILIKE '$to_email'");
+			if ($db->is_error($result)) {
 				rcube::raise_error([
 					'code' => 605, 'line' => __LINE__,
 					'file' => __FILE__,
@@ -1010,15 +1009,13 @@ class message_history extends rcube_plugin
 	private function xapi_error(Exception $e)
 	{
 		$this->load_config();
-		if ($this->config['enable_debug_logging']) {
-			$m = $e->getMessage();
-			rcube::raise_error([
-				'line' => __LINE__,
-				'file' => __FILE__,
-				'message' => "xapi: $m"
-				], true, false);
-		}
-	}	
+		$m = $e->getMessage();
+		rcube::raise_error([
+			'line' => __LINE__,
+			'file' => __FILE__,
+			'message' => "xapi: $m"
+			], true, false);
+	}
 
 	private function set_user()
 	{
@@ -1032,8 +1029,8 @@ class message_history extends rcube_plugin
 		$db = rcmail::get_instance()->get_dbh();
 
 		// convert from name to email address
-		$result = $db->query("SELECT name FROM contacts WHERE email = '" . $this->user_email . "'");
-		if ($this->config['enable_debug_logging'] && $db->is_error($result)) {
+		$result = $db->query("SELECT name FROM contacts WHERE email ILIKE '" . $this->user_email . "'");
+		if ($db->is_error($result)) {
 			rcube::raise_error([
 				'code' => 605, 'line' => __LINE__, 'file' => __FILE__,
 				'message' => "message_history: failed to pull name from database."
@@ -1041,7 +1038,7 @@ class message_history extends rcube_plugin
 		}
 		$records = $db->fetch_assoc($result);
 		// verify one entry
-		if (!$records || (count($records) != 1) && $this->config['enable_debug_logging']) {
+		if (!$records || (count($records) != 1)) {
 			rcube::console("message_history: cannot find single record for " . $this->user_email);
 			return;
 		} else {
@@ -1059,12 +1056,12 @@ class message_history extends rcube_plugin
 				break;
 			}
 		}
-		
-		if ($this->config['enable_debug_logging']) {
-			if (!isset($_SESSION['oauth_token']['access_token'])) {
+
+		if (!isset($_SESSION['oauth_token']['access_token'])) {
+			if ($this->config['enable_debug_logging']) {
 				rcube::console("message_history: no token set for for " . $this->user_email);
-				return;
 			}
+			return;
 		}
 		// get sub and issuer for oauth
 		$token = $_SESSION['oauth_token']['access_token'];
@@ -1074,6 +1071,6 @@ class message_history extends rcube_plugin
 		if ($this->config['enable_debug_logging']) {
 			rcube::console("sub: " . $this->sub . ' iss: ' . $this->iss);
 		}
-	}	
+	}
 }
 ?>
