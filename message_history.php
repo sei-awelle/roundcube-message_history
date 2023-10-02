@@ -311,9 +311,11 @@ class message_history extends rcube_plugin
                               	  	      '<option value="no_exercise">No Exercise</option>';
 
         		// Add view options from $decoded array
-        		foreach ($decoded as $view) {
-            			$composeExerciseDiv .= '<option value="' . $view['id'] . '">' . $view['name'] . '</option>';
-        		}
+			foreach ($decoded as $view) {
+				if ($view['status'] === 'Active') {
+            				$composeExerciseDiv .= '<option value="' . $view['id'] . '">' . $view['name'] . '</option>';
+        			}
+			}
 
         		// Close the select and parent div HTML
         		$composeExerciseDiv .= '</select></div></div>';
