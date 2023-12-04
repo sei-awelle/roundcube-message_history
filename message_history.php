@@ -100,7 +100,9 @@ class message_history extends rcube_plugin
 
 		if ($this->config['enable_xapi']) {
 			// Setup for xAPI information
-			$this->set_user();
+			if (!$this->set_user()) {
+				return;
+			}
 
 			// Set hooks for login
 			if ($rcmail->task == 'login') {
@@ -883,7 +885,9 @@ class message_history extends rcube_plugin
 			rcube::console("message_history: log_refresh");
 		}
 		if ($this->user_email == NULL) {
-			$this->set_user();
+			if (!$this->set_user()) {
+				return;
+			}
 		}
 
 		// Build xapi client
@@ -927,7 +931,9 @@ class message_history extends rcube_plugin
 			rcube::console("message_history: log_login");
 		}
 		if ($this->user_email == NULL) {
-			$this->set_user();
+			if (!$this->set_user()) {
+				return;
+			}
 		}
 
 		// Build xapi client
@@ -1042,7 +1048,7 @@ class message_history extends rcube_plugin
 		// verify one entry
 		if (!$records || (count($records) != 1)) {
 			rcube::console("message_history: cannot find single record for " . $this->user_email);
-			return;
+			return false;
 		} else {
 			$this->user_name = $records['name'];
 		}
@@ -1063,7 +1069,7 @@ class message_history extends rcube_plugin
 			if ($this->config['enable_debug_logging']) {
 				rcube::console("message_history: no token set for for " . $this->user_email);
 			}
-			return;
+			return false;
 		}
 		// get sub and issuer for oauth
 		$token = $_SESSION['oauth_token']['access_token'];
@@ -1073,6 +1079,7 @@ class message_history extends rcube_plugin
 		if ($this->config['enable_debug_logging']) {
 			rcube::console("sub: " . $this->sub . ' iss: ' . $this->iss);
 		}
+		return true;
 	}
 }
 ?>
